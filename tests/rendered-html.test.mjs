@@ -57,18 +57,33 @@ test("includes a bespoke social preview and removes starter assets", async () =>
 });
 
 test("includes authenticated persistence and application tracking", async () => {
-  const [component, browserClient, applicationRoute, migration] = await Promise.all([
+  const [component, browserClient, publicConfig, applicationRoute, migration] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase-browser.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase-config.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/application/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/0002_application_tracking.sql", import.meta.url), "utf8"),
   ]);
   assert.match(component, /signInWithOtp/);
   assert.match(component, /authenticatedFetch/);
   assert.match(component, /实时数据已连接/);
-  assert.match(browserClient, /NEXT_PUBLIC_SUPABASE_URL/);
+  assert.match(browserClient, /SupabasePublicConfig/);
+  assert.match(publicConfig, /NEXT_PUBLIC_SUPABASE_URL/);
   assert.match(applicationRoute, /auth\.getUser/);
   assert.match(applicationRoute, /application_events/);
   assert.match(migration, /enable row level security/);
   assert.match(migration, /users_manage_own_applications/);
+});
+
+test("reads Supabase public configuration at server runtime", async () => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
+  try {
+    const response = await render("/");
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /正在恢复登录状态/);
+  } finally {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  }
 });

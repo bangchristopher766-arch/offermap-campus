@@ -1,25 +1,25 @@
 "use client";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabasePublicConfig } from "@/lib/supabase-config";
 
 let browserClient: SupabaseClient | null = null;
+let browserClientSignature = "";
 
-function getPublishableKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+export function isSupabaseConfigured(config?: SupabasePublicConfig | null) {
+  return Boolean(config?.url && config.publishableKey);
 }
 
-export function isSupabaseConfigured() {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && getPublishableKey());
-}
-
-export function getBrowserSupabase() {
-  if (!isSupabaseConfigured()) return null;
-  if (!browserClient) {
+export function getBrowserSupabase(config?: SupabasePublicConfig | null) {
+  if (!isSupabaseConfigured(config)) return null;
+  const signature = `${config?.url}:${config?.publishableKey}`;
+  if (!browserClient || browserClientSignature !== signature) {
     browserClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-      getPublishableKey() as string,
+      config?.url as string,
+      config?.publishableKey as string,
       { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } },
     );
+    browserClientSignature = signature;
   }
   return browserClient;
 }

@@ -1,5 +1,8 @@
 import { OfferMapApp } from "../components/OfferMapApp";
+import { getSupabasePublicConfig } from "@/lib/supabase-config";
+
+export const dynamic = "force-dynamic";
 
 export default function PositionsPage() {
-  return <OfferMapApp initialView="positions" />;
+  return <OfferMapApp initialView="positions" supabaseConfig={getSupabasePublicConfig()} />;
 }

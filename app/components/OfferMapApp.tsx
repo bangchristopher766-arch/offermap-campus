@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase, isSupabaseConfigured } from "@/lib/supabase-browser";
+import type { SupabasePublicConfig } from "@/lib/supabase-config";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
@@ -519,14 +520,14 @@ function PositionModal({ close, save }: { close: () => void; save?: (input: NewP
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="position-title"><div className="modal-heading"><div><span className="modal-icon gold"><BriefcaseBusiness /></span><div><h2 id="position-title">新建目标岗位</h2><p>公司 → 岗位类别 → 具体岗位</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭"><X size={18} /></button></div><div className="form-grid"><label><span>公司</span><input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="例如：字节跳动" /></label><label><span>岗位名称</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：AI 产品经理实习生" /></label><fieldset><legend>岗位类别</legend><div className="category-picker">{(["技术","产品","运营","市场"] as Category[]).map((item) => <button className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)} key={item}>{item}</button>)}</div></fieldset><div className="form-two"><label><span>部门（选填）</span><input value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="例如：Flow 产品" /></label><label><span>地点（选填）</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="例如：北京" /></label></div><label><span>岗位 JD</span><textarea value={jdText} onChange={(event) => setJdText(event.target.value)} rows={8} placeholder="粘贴完整岗位职责与要求……" /></label>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}</div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving}>{saving ? <><LoaderCircle className="state-spinner inline" size={14} />保存中</> : "保存岗位"}</button></div></section></div>;
 }
 
-function LoginScreen() {
+function LoginScreen({ supabaseConfig }: { supabaseConfig: SupabasePublicConfig }) {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const sendLink = async () => {
     if (!email.includes("@")) { setError("请输入有效邮箱"); return; }
-    const supabase = getBrowserSupabase();
+    const supabase = getBrowserSupabase(supabaseConfig);
     if (!supabase) return;
     setSending(true); setError(""); setMessage("");
     const { error: authError } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: window.location.origin } });
@@ -536,11 +537,11 @@ function LoginScreen() {
   return <main className="login-screen"><section className="login-card card"><span className="login-brand"><span className="brand-symbol"><Route size={19} /></span>OfferMap</span><p className="eyebrow">真实数据工作台</p><h1>登录后继续求职准备</h1><p className="login-copy">你的公司、岗位、投递阶段和后续分析都会安全保存在个人账号中。</p><label className="login-field"><span>邮箱</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" onKeyDown={(event) => event.key === "Enter" && sendLink()} /></label>{error && <p className="login-feedback error"><AlertCircle size={14} />{error}</p>}{message && <p className="login-feedback success"><CheckCircle2 size={14} />{message}</p>}<button className="primary-button login-submit" type="button" onClick={sendLink} disabled={sending}>{sending ? <><LoaderCircle className="state-spinner inline" size={15} />发送中</> : "发送登录链接"}</button><div className="login-trust"><ShieldCheck size={15} />无需设置密码，登录链接仅在短时间内有效。</div></section></main>;
 }
 
-export function OfferMapApp({ initialView = "home" }: { initialView?: OfferMapView }) {
+export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { initialView?: OfferMapView; supabaseConfig?: SupabasePublicConfig | null }) {
   const [state, setState] = useState<DemoState>("normal");
   const [analysisTab, setAnalysisTab] = useState<AnalysisTab>("evidence");
   const [modal, setModal] = useState<"resume" | "position" | null>(null);
-  const configured = isSupabaseConfigured();
+  const configured = isSupabaseConfigured(supabaseConfig);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!configured);
   const [workspaceCompanies, setWorkspaceCompanies] = useState<WorkspaceCompany[]>(configured ? [] : demoCompanies);
@@ -562,7 +563,7 @@ export function OfferMapApp({ initialView = "home" }: { initialView?: OfferMapVi
 
   useEffect(() => {
     if (!configured) return;
-    const supabase = getBrowserSupabase();
+    const supabase = getBrowserSupabase(supabaseConfig);
     if (!supabase) return;
     const syncSession = (nextSession: Session | null) => {
       setSession(nextSession);
@@ -579,7 +580,7 @@ export function OfferMapApp({ initialView = "home" }: { initialView?: OfferMapVi
     supabase.auth.getSession().then(({ data }) => syncSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => syncSession(nextSession));
     return () => listener.subscription.unsubscribe();
-  }, [configured]);
+  }, [configured, supabaseConfig]);
 
   const createPosition = async (input: NewPositionInput) => {
     if (!configured) return;
@@ -598,10 +599,10 @@ export function OfferMapApp({ initialView = "home" }: { initialView?: OfferMapVi
     await loadWorkspace();
   };
 
-  const signOut = async () => { await getBrowserSupabase()?.auth.signOut(); setWorkspaceCompanies([]); };
+  const signOut = async () => { await getBrowserSupabase(supabaseConfig)?.auth.signOut(); setWorkspaceCompanies([]); };
 
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
-  if (configured && !session) return <LoginScreen />;
+  if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
   return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? "公司、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main><StatusPreview view={initialView} state={state} onChange={setState} />{modal === "resume" && <UploadModal close={() => setModal(null)} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}</div>;
 }
