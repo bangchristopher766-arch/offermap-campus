@@ -30,7 +30,6 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 export type OfferMapView = "home" | "resume" | "positions" | "map" | "analysis";
@@ -176,13 +175,13 @@ function AppHeader({ view }: { view: OfferMapView }) {
   return (
     <header className="app-header">
       <div className="header-inner">
-        <Link className="brand" href="/" aria-label="OfferMap 首页">
+        <a className="brand" href="/" aria-label="OfferMap 首页">
           <span className="brand-symbol"><Route size={18} /></span>
           <span>OfferMap</span>
-        </Link>
+        </a>
         <nav className="main-nav" aria-label="主导航">
           {NAV_ITEMS.map((item) => (
-            <Link key={item.key} href={item.href} className={navView === item.key ? "active" : ""}>{item.label}</Link>
+            <a key={item.key} href={item.href} className={navView === item.key ? "active" : ""}>{item.label}</a>
           ))}
         </nav>
         <div className="header-tools">
@@ -237,12 +236,19 @@ function HomeView() {
     <>
       <section className="home-intro"><p className="eyebrow">你的应届求职工作台</p><h1>今天，准备哪一部分？</h1><p>简历、岗位和求职地图彼此独立。你可以从任何一处开始，也可以随时回来继续。</p></section>
       <div className="entry-grid">
-        {entries.map(({ title, body, meta, icon: Icon, href, tone }) => <Link href={href} className="entry-card card" key={title}><span className={`entry-icon ${tone}`}><Icon /></span><h2>{title}</h2><p>{body}</p><span className="entry-meta"><CircleDot size={13} />{meta}</span><span className="entry-arrow"><ArrowUpRight size={17} /></span></Link>)}
+        {entries.map(({ title, body, meta, icon: Icon, href, tone }) => (
+          <a href={href} className="entry-card card" key={title} aria-label={`进入${title}`}>
+            <span className={`entry-icon ${tone}`}><Icon /></span><h2>{title}</h2><p>{body}</p>
+            <span className="entry-meta"><CircleDot size={13} />{meta}</span>
+            <span className="entry-cta">进入查看 <ArrowRight size={14} /></span>
+            <span className="entry-arrow"><ArrowUpRight size={17} /></span>
+          </a>
+        ))}
       </div>
-      <section className="recent-section"><div className="section-heading"><h2>最近准备</h2><Link href="/positions">查看全部 <ChevronRight size={15} /></Link></div><div className="recent-grid">
-        <Link href="/positions/byte-pm" className="recent-item"><span className="company-mark byte">字节</span><span><strong>AI 产品经理实习生</strong><small>证据地图 · 2 小时前</small></span><i className="live-dot" /></Link>
-        <Link href="/positions/mt-ops" className="recent-item"><span className="company-mark meituan">美团</span><span><strong>用户增长运营实习生</strong><small>面试追问 · 昨天</small></span><i className="live-dot warning" /></Link>
-        <Link href="/positions/tencent-ba" className="recent-item"><span className="company-mark tencent">腾讯</span><span><strong>商业分析实习生</strong><small>尚未生成分析</small></span><i className="live-dot muted" /></Link>
+      <section className="recent-section"><div className="section-heading"><h2>最近准备</h2><a href="/positions">查看全部 <ChevronRight size={15} /></a></div><div className="recent-grid">
+        <a href="/positions/byte-pm" className="recent-item"><span className="company-mark byte">字节</span><span><strong>AI 产品经理实习生</strong><small>证据地图 · 2 小时前</small></span><i className="live-dot" /></a>
+        <a href="/positions/mt-ops" className="recent-item"><span className="company-mark meituan">美团</span><span><strong>用户增长运营实习生</strong><small>面试追问 · 昨天</small></span><i className="live-dot warning" /></a>
+        <a href="/positions/tencent-ba" className="recent-item"><span className="company-mark tencent">腾讯</span><span><strong>商业分析实习生</strong><small>尚未生成分析</small></span><i className="live-dot muted" /></a>
       </div></section>
     </>
   );
@@ -270,7 +276,7 @@ function PositionsView({ openNewPosition }: { openNewPosition: () => void }) {
     <>
       <PageHeader eyebrow="公司 → 类别 → 具体岗位" title="目标岗位" description="岗位不依赖简历，可以先保存 JD，再决定何时生成分析。" action={<button className="primary-button" type="button" onClick={openNewPosition}><Plus size={17} />新建岗位</button>} />
       <div className="position-toolbar"><label className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索公司或岗位" /></label><label className="select-button"><Filter size={15} /><select value={category} onChange={(event) => setCategory(event.target.value)}><option>全部类别</option><option>技术</option><option>产品</option><option>运营</option><option>市场</option></select><ChevronDown size={14} /></label><button className="secondary-button" type="button">全部状态 <ChevronDown size={14} /></button></div>
-      <div className="company-list">{filtered.map((company) => <article className="card company-card" key={company.id}><div className="company-heading"><span className={`company-mark ${company.id}`}>{company.mark}</span><div><h2>{company.name}</h2><p>{company.meta}</p></div><button className="icon-button" type="button" aria-label={`${company.name}更多操作`}><MoreHorizontal size={18} /></button></div><div className="category-grid">{company.groups.map((group) => <section className={`category-column ${category !== "全部类别" && category !== group.category ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{group.positions.length ? group.positions.map((position) => <Link href={position.includes("AI") ? "/positions/byte-pm" : "/positions/sample"} className="position-row" key={position}><strong>{position}</strong><small>{position.includes("AI") ? "北京 · Flow 产品" : "查看岗位详情"}</small><ChevronRight size={14} /></Link>) : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>)}</div></article>)}</div>
+      <div className="company-list">{filtered.map((company) => <article className="card company-card" key={company.id}><div className="company-heading"><span className={`company-mark ${company.id}`}>{company.mark}</span><div><h2>{company.name}</h2><p>{company.meta}</p></div><button className="icon-button" type="button" aria-label={`${company.name}更多操作`}><MoreHorizontal size={18} /></button></div><div className="category-grid">{company.groups.map((group) => <section className={`category-column ${category !== "全部类别" && category !== group.category ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{group.positions.length ? group.positions.map((position) => <a href={position.includes("AI") ? "/positions/byte-pm" : "/positions/sample"} className="position-row" key={position}><strong>{position}</strong><small>{position.includes("AI") ? "北京 · Flow 产品" : "查看岗位详情"}</small><ChevronRight size={14} /></a>) : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>)}</div></article>)}</div>
     </>
   );
 }
@@ -290,13 +296,13 @@ function MapView() {
 }
 
 function MapCompany({ className, mark, name, subtitle, tags, status, tone }: { className: string; mark: string; name: string; subtitle: string; tags: string[]; status: string; tone: string }) {
-  return <Link href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></Link>;
+  return <a href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></a>;
 }
 
 function AnalysisView({ tab, setTab }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void }) {
   return (
     <>
-      <div className="analysis-heading"><div><div className="breadcrumb"><Link href="/positions">字节跳动</Link><ChevronRight size={13} /><span>产品</span><ChevronRight size={13} /><span>AI 产品经理实习生</span></div><h1>AI 产品经理实习生</h1><p>北京 · Flow 产品团队 · JD-2026-0821</p></div><button className="primary-button" type="button"><RefreshCw size={15} />重新生成</button></div>
+      <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">字节跳动</a><ChevronRight size={13} /><span>产品</span><ChevronRight size={13} /><span>AI 产品经理实习生</span></div><h1>AI 产品经理实习生</h1><p>北京 · Flow 产品团队 · JD-2026-0821</p></div><button className="primary-button" type="button"><RefreshCw size={15} />重新生成</button></div>
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
       {tab === "evidence" && <EvidencePanel />}{tab === "resume" && <ResumeSuggestionsPanel />}{tab === "interview" && <InterviewPanel />}
     </>
