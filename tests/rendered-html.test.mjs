@@ -87,3 +87,20 @@ test("reads Supabase public configuration at server runtime", async () => {
     delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   }
 });
+
+test("implements private PDF resume versions", async () => {
+  const [component, listRoute, parseRoute, migration] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resumes/parse/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/0003_resume_versions.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /type="file"/);
+  assert.match(component, /开始解析并保存/);
+  assert.match(parseRoute, /storage/);
+  assert.match(parseRoute, /analysis_status: "stale"/);
+  assert.match(listRoute, /createSignedUrl/);
+  assert.match(migration, /resume-pdfs/);
+  assert.match(migration, /auth\.uid\(\)/);
+  assert.match(migration, /public, file_size_limit/);
+});

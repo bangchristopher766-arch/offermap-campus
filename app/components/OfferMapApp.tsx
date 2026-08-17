@@ -36,7 +36,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase, isSupabaseConfigured } from "@/lib/supabase-browser";
 import type { SupabasePublicConfig } from "@/lib/supabase-config";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type OfferMapView = "home" | "resume" | "positions" | "map" | "analysis";
 type DemoState = "normal" | "empty" | "loading" | "error";
@@ -47,6 +47,18 @@ type DemoPosition = { id: string; title: string; location: string; stage: Applic
 type WorkspaceCompany = { id: string; name: string; mark: string; groups: Array<{ category: Category; positions: DemoPosition[] }> };
 type NewPositionInput = { company: string; title: string; category: Category; department: string; location: string; jdText: string };
 type StageUpdateInput = { stage: ApplicationStage; occurredAt: string; nextEventAt?: string; nextEventType?: string; note?: string };
+type ResumeSection = { title: string; items: string[] };
+type ResumeVersion = {
+  id: string;
+  name: string;
+  version: number;
+  file_size: number;
+  page_count: number;
+  structured_content: { sections?: ResumeSection[] } | null;
+  created_at: string;
+  updated_at: string;
+  preview_url: string | null;
+};
 
 const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
   { key: "home", label: "首页", href: "/" },
@@ -96,6 +108,23 @@ const demoCompanies: WorkspaceCompany[] = [
   },
 ];
 
+const demoResumeVersions: ResumeVersion[] = [{
+  id: "demo-resume-v3",
+  name: "林同学-互联网求职简历.pdf",
+  version: 3,
+  file_size: 1_887_437,
+  page_count: 2,
+  structured_content: { sections: [
+    { title: "教育经历", items: ["华东师范大学 · 新闻传播学"] },
+    { title: "实习经历", items: ["用户增长、产品运营"] },
+    { title: "项目经历", items: ["校园内容社区、AI 求职助手"] },
+    { title: "技能与证书", items: ["SQL、Figma、数据分析、英语"] },
+  ] },
+  created_at: "2026-08-16T14:40:00.000Z",
+  updated_at: "2026-08-16T14:40:00.000Z",
+  preview_url: null,
+}];
+
 function stageTone(stage: ApplicationStage) {
   if (["一面中", "二面中", "终面中"].includes(stage)) return "interview";
   if (["Offer 沟通", "已录用"].includes(stage)) return "offer";
@@ -138,7 +167,10 @@ function mapWorkspaceCompanies(rows: unknown): WorkspaceCompany[] {
 }
 
 async function fetchWorkspaceJson(path: string, accessToken: string, init?: RequestInit) {
-  const response = await fetch(path, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}`, ...(init?.headers ?? {}) } });
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  if (!(init?.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const response = await fetch(path, { ...init, headers });
   const payload = await response.json().catch(() => ({})) as { data?: unknown; error?: string };
   if (!response.ok) throw new Error(payload.error ?? "请求失败");
   return payload;
@@ -344,16 +376,35 @@ function ClockBadge() {
   return <><CalendarDays size={19} /><small>待跟进</small></>;
 }
 
-function ResumeView({ openUpload }: { openUpload: () => void }) {
+function formatFileSize(bytes: number) {
+  if (!bytes) return "大小未知";
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function formatResumeDate(value: string, includeTime = false) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return date.toLocaleString("zh-CN", includeTime
+    ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+    : { month: "short", day: "numeric" });
+}
+
+function ResumeView({ openUpload, versions, loading, error }: { openUpload: () => void; versions: ResumeVersion[]; loading: boolean; error: string }) {
+  const current = versions[0];
+  const sections = current?.structured_content?.sections ?? [];
   return (
     <>
-      <PageHeader eyebrow="独立资料库" title="我的简历" description="这里保存唯一的母版简历。岗位定制建议只生成副本，不会覆盖原文。" action={<button className="primary-button" type="button" onClick={openUpload}><Upload size={16} />更新简历</button>} />
-      <div className="resume-layout">
-        <section className="card content-card"><div className="card-heading"><h2>当前母版</h2><span className="success-badge"><CheckCircle2 size={13} />解析完成</span></div><div className="file-card"><span className="pdf-file"><FileText /></span><div><strong>林同学-互联网求职简历.pdf</strong><small>v3 · 1.8 MB · 更新于 8 月 16 日 22:40</small></div><button className="secondary-button compact" type="button">预览</button></div><div className="resume-outline">
-          {[['教育经历','华东师范大学 · 新闻传播学','1 项'],['实习经历','用户增长、产品运营','2 项'],['项目经历','校园内容社区、AI 求职助手','3 项'],['技能','SQL、Figma、数据分析、英语','8 项']].map((row) => <div className="outline-row" key={row[0]}><span>{row[0]}</span><strong>{row[1]}</strong><small>{row[2]}</small><ChevronRight size={15} /></div>)}
-        </div></section>
-        <aside className="card side-card"><div className="card-heading"><h2>版本记录</h2><button className="text-button" type="button">管理</button></div><div className="version-list"><div className="version-item current"><span>v3 · 当前版本</span><strong>强化项目个人贡献</strong><small>8 月 16 日 22:40</small></div><div className="version-item"><span>v2</span><strong>补充 AI 产品项目</strong><small>8 月 9 日</small></div><div className="version-item"><span>v1</span><strong>首次上传</strong><small>8 月 2 日</small></div></div><div className="privacy-note"><ShieldCheck size={17} /><p><strong>隐私保护</strong>原始 PDF 解析后删除，仅保存用于求职分析的结构化文本。</p></div></aside>
-      </div>
+      <PageHeader eyebrow="独立资料库" title="我的简历" description="每次上传都会保留一个私有 PDF 版本。岗位定制建议只生成副本，不会覆盖母版。" action={<button className="primary-button" type="button" onClick={openUpload}><Upload size={16} />{current ? "更新简历" : "上传简历"}</button>} />
+      {loading ? <section className="card resume-loading"><LoaderCircle className="state-spinner" size={25} /><div><strong>正在读取简历版本</strong><p>正在安全加载你的 PDF 和解析结果。</p></div></section>
+        : error ? <section className="card resume-empty error"><AlertCircle size={24} /><h2>简历暂时无法读取</h2><p>{error}</p><button className="primary-button" type="button" onClick={openUpload}>重新上传</button></section>
+        : !current ? <section className="card resume-empty"><span className="empty-resume-icon"><FileText size={28} /></span><h2>上传第一份母版简历</h2><p>支持 10 MB 以内的文本型 PDF。上传后会保存私有原文件、解析内容和版本记录。</p><button className="primary-button" type="button" onClick={openUpload}><Upload size={16} />选择 PDF</button></section>
+        : <div className="resume-layout">
+          <section className="card content-card"><div className="card-heading"><h2>当前母版</h2><span className="success-badge"><CheckCircle2 size={13} />解析完成</span></div><div className="file-card"><span className="pdf-file"><FileText /></span><div><strong>{current.name}</strong><small>v{current.version} · {formatFileSize(current.file_size)} · {current.page_count || "?"} 页 · 更新于 {formatResumeDate(current.updated_at, true)}</small></div>{current.preview_url ? <a className="secondary-button compact" href={current.preview_url} target="_blank" rel="noreferrer">预览 PDF</a> : <button className="secondary-button compact" type="button" disabled>暂无预览</button>}</div><div className="resume-outline">
+            {sections.slice(0, 7).map((section) => <div className="outline-row" key={section.title}><span>{section.title}</span><strong>{section.items.slice(0, 2).join(" · ") || "已识别内容"}</strong><small>{section.items.length} 行</small><ChevronRight size={15} /></div>)}
+            {!sections.length && <div className="outline-placeholder"><FileCheck2 size={18} /><span>PDF 已保存，结构化内容将在下次更新时重新解析。</span></div>}
+          </div></section>
+          <aside className="card side-card"><div className="card-heading"><h2>版本记录</h2><span className="version-count">{versions.length} 个版本</span></div><div className="version-list">{versions.map((version, index) => <div className={`version-item ${index === 0 ? "current" : ""}`} key={version.id}><span>v{version.version}{index === 0 ? " · 当前版本" : ""}</span><strong>{version.name}</strong><small>{formatResumeDate(version.updated_at, index === 0)} · {formatFileSize(version.file_size)} · {version.page_count || "?"} 页</small>{version.preview_url && <a href={version.preview_url} target="_blank" rel="noreferrer">查看 PDF <ArrowUpRight size={12} /></a>}</div>)}</div><div className="privacy-note"><ShieldCheck size={17} /><p><strong>私有版本保护</strong>PDF 存放在你的私有空间，预览链接会自动过期，其他账号无法读取。</p></div></aside>
+        </div>}
     </>
   );
 }
@@ -472,8 +523,32 @@ function SourcePanel() {
   return <aside className="card source-panel"><div className="source-heading"><div><h2>原文引用</h2><p>所有判断都能定位来源</p></div><FileCheck2 size={20} /></div><section><strong>JD 原文</strong><p>参与 AI 创作工具的产品设计，能够独立完成<mark>用户需求分析与产品方案设计</mark>，结合数据和反馈持续优化体验。</p></section><section><strong>简历原文</strong><p>负责校园内容社区从 0 到 1 的<mark>需求调研、原型设计和两轮迭代</mark>，通过问卷与访谈收集 126 份反馈。</p></section><button className="text-button" type="button">在母版简历中定位 <ArrowUpRight size={14} /></button></aside>;
 }
 
-function UploadModal({ close }: { close: () => void }) {
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="upload-title"><div className="modal-heading"><div><span className="modal-icon"><Upload /></span><div><h2 id="upload-title">更新母版简历</h2><p>更新后，相关岗位会标记为需要重新生成</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭"><X size={18} /></button></div><button className="upload-zone" type="button"><Upload size={28} /><strong>拖入 PDF，或点击选择文件</strong><span>仅支持文本型 PDF，最大 10 MB</span></button><div className="modal-note"><ShieldCheck size={17} /><p>原始 PDF 完成解析后删除，仅保存结构化文本。岗位定制不会反向覆盖母版简历。</p></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close}>取消</button><button className="primary-button" type="button" onClick={close}>开始解析</button></div></section></div>;
+function UploadModal({ close, upload }: { close: () => void; upload: (file: File) => Promise<{ duplicate?: boolean }> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const choose = (nextFile?: File) => {
+    setError("");
+    if (!nextFile) return;
+    if (nextFile.type !== "application/pdf" && !nextFile.name.toLowerCase().endsWith(".pdf")) { setError("仅支持 PDF 文件"); return; }
+    if (nextFile.size > 10 * 1024 * 1024) { setError("文件不能超过 10 MB"); return; }
+    setFile(nextFile);
+  };
+
+  const submit = async () => {
+    if (!file) { setError("请先选择一份 PDF 简历"); return; }
+    setSaving(true); setError("");
+    try { await upload(file); close(); }
+    catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : "上传失败，请稍后重试"); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !saving && close()}><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="upload-title"><div className="modal-heading"><div><span className="modal-icon"><Upload /></span><div><h2 id="upload-title">{file ? "确认简历版本" : "更新母版简历"}</h2><p>{saving ? "正在保存 PDF 并解析简历内容" : "上传后会生成新的私有版本"}</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭" disabled={saving}><X size={18} /></button></div><input ref={inputRef} className="visually-hidden" type="file" accept="application/pdf,.pdf" onChange={(event) => choose(event.target.files?.[0])} />
+    <button className={`upload-zone ${dragging ? "dragging" : ""} ${file ? "selected" : ""}`} type="button" onClick={() => !saving && inputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files?.[0]); }} disabled={saving}>{saving ? <><LoaderCircle className="state-spinner" size={28} /><strong>正在解析并保存…</strong><span>请不要关闭页面，通常需要数秒</span></> : file ? <><span className="selected-pdf"><FileText size={22} /></span><strong>{file.name}</strong><span>{formatFileSize(file.size)} · 点击可重新选择</span></> : <><Upload size={28} /><strong>拖入 PDF，或点击选择文件</strong><span>仅支持文本型 PDF，最大 10 MB</span></>}</button>
+    {error && <p className="form-error upload-error"><AlertCircle size={14} />{error}</p>}<div className="modal-note"><ShieldCheck size={17} /><p>PDF 会保存在你的私有空间，并生成解析文本与版本记录；预览链接仅短时间有效。</p></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close} disabled={saving}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving || !file}>{saving ? <><LoaderCircle className="state-spinner inline" size={14} />解析保存中</> : "开始解析并保存"}</button></div></section></div>;
 }
 
 function StageModal({ position, close, update }: { position: DemoPosition; close: () => void; update: (input: StageUpdateInput) => Promise<void> }) {
@@ -547,6 +622,9 @@ export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { i
   const [workspaceCompanies, setWorkspaceCompanies] = useState<WorkspaceCompany[]>(configured ? [] : demoCompanies);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
+  const [resumeVersions, setResumeVersions] = useState<ResumeVersion[]>(configured ? [] : demoResumeVersions);
+  const [resumesLoading, setResumesLoading] = useState(false);
+  const [resumesError, setResumesError] = useState("");
 
   const authenticatedFetch = async (path: string, init?: RequestInit) => {
     if (!session?.access_token) throw new Error("登录状态已失效，请重新登录");
@@ -559,6 +637,17 @@ export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { i
     try { const payload = await fetchWorkspaceJson("/api/companies", activeSession.access_token); setWorkspaceCompanies(mapWorkspaceCompanies(payload.data)); }
     catch (loadError) { setWorkspaceError(loadError instanceof Error ? loadError.message : "数据加载失败"); }
     finally { setWorkspaceLoading(false); }
+  };
+
+  const loadResumes = async (activeSession = session) => {
+    if (!activeSession) return;
+    setResumesLoading(true); setResumesError("");
+    try {
+      const payload = await fetchWorkspaceJson("/api/resumes", activeSession.access_token);
+      setResumeVersions(Array.isArray(payload.data) ? payload.data as ResumeVersion[] : []);
+    } catch (loadError) {
+      setResumesError(loadError instanceof Error ? loadError.message : "简历读取失败");
+    } finally { setResumesLoading(false); }
   };
 
   useEffect(() => {
@@ -575,12 +664,19 @@ export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { i
           .then((payload) => setWorkspaceCompanies(mapWorkspaceCompanies(payload.data)))
           .catch((loadError) => setWorkspaceError(loadError instanceof Error ? loadError.message : "数据加载失败"))
           .finally(() => setWorkspaceLoading(false));
-      } else setWorkspaceCompanies([]);
+        if (initialView === "resume") {
+          setResumesLoading(true);
+          void fetchWorkspaceJson("/api/resumes", nextSession.access_token)
+            .then((payload) => setResumeVersions(Array.isArray(payload.data) ? payload.data as ResumeVersion[] : []))
+            .catch((loadError) => setResumesError(loadError instanceof Error ? loadError.message : "简历读取失败"))
+            .finally(() => setResumesLoading(false));
+        }
+      } else { setWorkspaceCompanies([]); setResumeVersions([]); }
     };
     supabase.auth.getSession().then(({ data }) => syncSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => syncSession(nextSession));
     return () => listener.subscription.unsubscribe();
-  }, [configured, supabaseConfig]);
+  }, [configured, supabaseConfig, initialView]);
 
   const createPosition = async (input: NewPositionInput) => {
     if (!configured) return;
@@ -599,10 +695,19 @@ export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { i
     await loadWorkspace();
   };
 
+  const uploadResume = async (file: File) => {
+    if (!session?.access_token) throw new Error("登录状态已失效，请重新登录");
+    const form = new FormData();
+    form.append("file", file);
+    const payload = await fetchWorkspaceJson("/api/resumes/parse", session.access_token, { method: "POST", body: form });
+    await Promise.all([loadResumes(session), loadWorkspace(session)]);
+    return { duplicate: Boolean((payload as { duplicate?: boolean }).duplicate) };
+  };
+
   const signOut = async () => { await getBrowserSupabase(supabaseConfig)?.auth.signOut(); setWorkspaceCompanies([]); };
 
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? "公司、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main><StatusPreview view={initialView} state={state} onChange={setState} />{modal === "resume" && <UploadModal close={() => setModal(null)} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}</div>;
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main><StatusPreview view={initialView} state={state} onChange={setState} />{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}</div>;
 }

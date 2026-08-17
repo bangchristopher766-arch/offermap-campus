@@ -9,6 +9,7 @@ OfferMap 把一份母版简历和多个目标岗位连接起来，按「公司 �
 - 不输出不可解释的匹配分；使用「证据充分 / 部分支持 / 暂无证据」。
 - 面试地图沿着「JD 要求 → 简历经历 → 面试官关注点 → 主问题 → 连环追问 → 回答准备」展开。
 - 无外部凭据时，首页以完整演示数据运行；配置 Supabase 后启用邮箱 Magic Link 登录、账号数据隔离和永久保存。
+- 母版简历使用私有 Storage 保存每一版 PDF，短期签名链接用于在线预览；数据库同步保存解析文本、页数和结构化内容。
 - 公司、岗位与求职阶段使用真实数据库；每次阶段变化都会留下历史事件。
 
 ## 本地运行
@@ -23,7 +24,7 @@ npm run dev
 
 ## 外部服务配置
 
-1. 在 Supabase 创建项目，依次执行 `supabase/migrations/0001_offermap.sql` 和 `supabase/migrations/0002_application_tracking.sql`。
+1. 在 Supabase 创建项目，依次执行 `supabase/migrations/0001_offermap.sql`、`supabase/migrations/0002_application_tracking.sql` 和 `supabase/migrations/0003_resume_versions.sql`。第三个迁移会创建私有 `resume-pdfs` 存储桶及账号隔离规则。
 2. 把项目 URL 与 anon key 写入 `.env.local`。
 3. 在 Supabase Authentication 中启用 Email，并把本地地址与部署域名加入 Redirect URLs。
 4. 在阿里云百炼创建 API Key，并填写 `DASHSCOPE_API_KEY`。
@@ -40,7 +41,8 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
 ## 关键接口
 
-- `POST /api/resumes/parse`：解析不超过 5 MB 的文本型 PDF，原文件不落盘。
+- `GET /api/resumes`：读取当前账号的全部简历版本，并返回短期有效的私有 PDF 预览链接。
+- `POST /api/resumes/parse`：解析并保存不超过 10 MB 的文本型 PDF，生成新版本并将旧岗位分析标记为过期。
 - `POST /api/analyze`：生成证据地图、定制简历或面试地图；Zod 校验并验证原文引用。
 - `/api/companies`：读取与创建公司。
 - `/api/companies/:id`：修改或级联删除公司。
