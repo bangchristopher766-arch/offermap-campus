@@ -4,13 +4,14 @@ import {
   AlertCircle,
   ArrowRight,
   ArrowUpRight,
-  Bell,
   BriefcaseBusiness,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleDot,
+  Command,
   Copy,
   FileCheck2,
   FileText,
@@ -22,20 +23,23 @@ import {
   RefreshCw,
   Route,
   Search,
-  Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Target,
   Upload,
+  UserRound,
   WandSparkles,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type OfferMapView = "home" | "resume" | "positions" | "map" | "analysis";
 type DemoState = "normal" | "empty" | "loading" | "error";
 type AnalysisTab = "evidence" | "resume" | "interview";
 type Category = "技术" | "产品" | "运营" | "市场";
+type ApplicationStage = "感兴趣" | "准备中" | "已投递" | "笔试中" | "一面中" | "二面中" | "终面中" | "Offer 沟通" | "已录用" | "未通过" | "已放弃";
+type DemoPosition = { id: string; title: string; location: string; stage: ApplicationStage; analysis: string; next?: string; href: string };
 
 const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
   { key: "home", label: "首页", href: "/" },
@@ -44,28 +48,31 @@ const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
   { key: "map", label: "求职地图", href: "/map" },
 ];
 
-const companies = [
+const ALL_STAGES: ApplicationStage[] = ["感兴趣", "准备中", "已投递", "笔试中", "一面中", "二面中", "终面中", "Offer 沟通", "已录用", "未通过", "已放弃"];
+
+const companies: Array<{ id: string; name: string; mark: string; groups: Array<{ category: Category; positions: DemoPosition[] }> }> = [
   {
     id: "byte",
     name: "字节跳动",
     mark: "字节",
-    meta: "4 个岗位 · 3 个已分析",
     groups: [
-      { category: "技术" as Category, positions: ["数据分析实习生"] },
-      { category: "产品" as Category, positions: ["AI 产品经理实习生", "策略产品实习生"] },
+      { category: "技术", positions: [{ id: "byte-da", title: "数据分析实习生", location: "上海 · 商业化", stage: "已投递", analysis: "2 项待补强", href: "/positions/sample" }] },
+      { category: "产品", positions: [
+        { id: "byte-pm", title: "AI 产品经理实习生", location: "北京 · Flow 产品", stage: "二面中", analysis: "2 个问题待准备", next: "8 月 21 日 15:00", href: "/positions/byte-pm" },
+        { id: "byte-strategy", title: "策略产品实习生", location: "北京 · 电商", stage: "准备中", analysis: "尚未生成分析", href: "/positions/sample" },
+      ] },
       { category: "运营" as Category, positions: [] },
-      { category: "市场" as Category, positions: ["商业化市场实习生"] },
+      { category: "市场", positions: [{ id: "byte-mkt", title: "商业化市场实习生", location: "上海 · 巨量引擎", stage: "感兴趣", analysis: "尚未生成分析", href: "/positions/sample" }] },
     ],
   },
   {
     id: "meituan",
     name: "美团",
     mark: "美团",
-    meta: "2 个岗位 · 1 个已分析",
     groups: [
       { category: "技术" as Category, positions: [] },
-      { category: "产品" as Category, positions: ["到店产品实习生"] },
-      { category: "运营" as Category, positions: ["用户增长运营实习生"] },
+      { category: "产品", positions: [{ id: "mt-pm", title: "到店产品实习生", location: "北京 · 到店事业群", stage: "已投递", analysis: "1 项待补强", href: "/positions/sample" }] },
+      { category: "运营", positions: [{ id: "mt-ops", title: "用户增长运营实习生", location: "上海 · 优选", stage: "一面中", analysis: "3 个问题待准备", next: "8 月 20 日 10:30", href: "/positions/sample" }] },
       { category: "市场" as Category, positions: [] },
     ],
   },
@@ -73,15 +80,24 @@ const companies = [
     id: "tencent",
     name: "腾讯",
     mark: "腾讯",
-    meta: "1 个岗位 · 待分析",
     groups: [
-      { category: "技术" as Category, positions: ["商业分析实习生"] },
+      { category: "技术", positions: [{ id: "tencent-ba", title: "商业分析实习生", location: "深圳 · PCG", stage: "Offer 沟通", analysis: "准备较完整", next: "等待薪资沟通", href: "/positions/sample" }] },
       { category: "产品" as Category, positions: [] },
       { category: "运营" as Category, positions: [] },
       { category: "市场" as Category, positions: [] },
     ],
   },
 ];
+
+const allDemoPositions = companies.flatMap((company) => company.groups.flatMap((group) => group.positions.map((position) => ({ ...position, company: company.name, category: group.category }))));
+
+function stageTone(stage: ApplicationStage) {
+  if (["一面中", "二面中", "终面中"].includes(stage)) return "interview";
+  if (["Offer 沟通", "已录用"].includes(stage)) return "offer";
+  if (["未通过", "已放弃"].includes(stage)) return "closed";
+  if (["已投递", "笔试中"].includes(stage)) return "applied";
+  return "planning";
+}
 
 const evidence = [
   {
@@ -172,25 +188,47 @@ const STATE_COPY: Record<OfferMapView, Record<Exclude<DemoState, "normal">, { ti
 
 function AppHeader({ view }: { view: OfferMapView }) {
   const navView = view === "analysis" ? "positions" : view;
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchResults = allDemoPositions.filter((position) => `${position.company}${position.title}${position.category}`.toLowerCase().includes(searchQuery.toLowerCase()));
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+      if (event.key === "Escape") { setSearchOpen(false); setCreateOpen(false); setProfileOpen(false); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   return (
-    <header className="app-header">
-      <div className="header-inner">
-        <a className="brand" href="/" aria-label="OfferMap 首页">
-          <span className="brand-symbol"><Route size={18} /></span>
-          <span>OfferMap</span>
-        </a>
-        <nav className="main-nav" aria-label="主导航">
-          {NAV_ITEMS.map((item) => (
-            <a key={item.key} href={item.href} className={navView === item.key ? "active" : ""}>{item.label}</a>
-          ))}
-        </nav>
-        <div className="header-tools">
-          <button className="icon-button" type="button" aria-label="搜索"><Search size={18} /></button>
-          <button className="icon-button" type="button" aria-label="通知"><Bell size={18} /></button>
-          <button className="avatar" type="button" aria-label="个人中心">林</button>
+    <>
+      <header className="app-header">
+        <div className="header-inner">
+          <a className="brand" href="/" aria-label="OfferMap 首页">
+            <span className="brand-symbol"><Route size={18} /></span><span>OfferMap</span>
+          </a>
+          <nav className="main-nav" aria-label="主导航">
+            {NAV_ITEMS.map((item) => <a key={item.key} href={item.href} className={navView === item.key ? "active" : ""}>{item.label}</a>)}
+          </nav>
+          <div className="header-tools">
+            <button className="header-search-button" type="button" onClick={() => setSearchOpen(true)} aria-label="全局搜索"><Search size={16} /><span>搜索</span><kbd>⌘ K</kbd></button>
+            <div className="header-menu-wrap">
+              <button className="header-new-button" type="button" onClick={() => { setCreateOpen(!createOpen); setProfileOpen(false); }} aria-expanded={createOpen}><Plus size={15} />新建</button>
+              {createOpen && <div className="header-popover create-menu"><a href="/positions"><BriefcaseBusiness size={16} /><span><strong>新建岗位</strong><small>保存公司、类别与 JD</small></span></a><a href="/resume"><Upload size={16} /><span><strong>上传简历</strong><small>更新母版简历版本</small></span></a></div>}
+            </div>
+            <div className="header-menu-wrap">
+              <button className="avatar" type="button" onClick={() => { setProfileOpen(!profileOpen); setCreateOpen(false); }} aria-label="个人中心" aria-expanded={profileOpen}>林</button>
+              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar">林</span><div><strong>林同学</strong><small>2026 届 · 产品方向</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a><div className="profile-plan"><Sparkles size={13} />演示账号 · 今日剩余 5 次分析</div></div>}
+            </div>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      {searchOpen && <div className="search-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSearchOpen(false)}><section className="global-search" role="dialog" aria-modal="true" aria-label="全局搜索"><div className="global-search-input"><Search size={19} /><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索公司、岗位或类别" /><button type="button" onClick={() => setSearchOpen(false)}>ESC</button></div><div className="search-result-label">{searchQuery ? `找到 ${searchResults.length} 个结果` : "最近访问"}</div><div className="search-results">{searchResults.slice(0, 6).map((position) => <a href={position.href} key={position.id}><span className="search-result-icon"><BriefcaseBusiness size={16} /></span><span><strong>{position.title}</strong><small>{position.company} · {position.category} · {position.location}</small></span><em className={`application-stage ${stageTone(position.stage)}`}>{position.stage}</em></a>)}</div><div className="search-help"><Command size={13} />输入关键词搜索，按 Enter 打开</div></section></div>}
+    </>
   );
 }
 
@@ -245,6 +283,10 @@ function HomeView() {
           </a>
         ))}
       </div>
+      <section className="next-section"><div className="section-heading"><h2>接下来</h2><a href="/positions">管理全部进度 <ChevronRight size={15} /></a></div><div className="next-grid">
+        <a href="/positions/byte-pm" className="card next-card urgent"><span className="date-block"><strong>21</strong><small>8 月</small></span><div><span className="next-kicker">明天 15:00 · 二面</span><h3>字节跳动 · AI 产品经理实习生</h3><p>还有 2 个高优先级问题未准备</p></div><span className="next-arrow"><ArrowRight size={16} /></span></a>
+        <a href="/positions/sample" className="card next-card"><span className="date-block soft"><ClockBadge /></span><div><span className="next-kicker">投递 5 天未更新</span><h3>美团 · 到店产品实习生</h3><p>建议记录最新进展或发起跟进</p></div><span className="next-arrow"><ArrowRight size={16} /></span></a>
+      </div></section>
       <section className="recent-section"><div className="section-heading"><h2>最近准备</h2><a href="/positions">查看全部 <ChevronRight size={15} /></a></div><div className="recent-grid">
         <a href="/positions/byte-pm" className="recent-item"><span className="company-mark byte">字节</span><span><strong>AI 产品经理实习生</strong><small>证据地图 · 2 小时前</small></span><i className="live-dot" /></a>
         <a href="/positions/mt-ops" className="recent-item"><span className="company-mark meituan">美团</span><span><strong>用户增长运营实习生</strong><small>面试追问 · 昨天</small></span><i className="live-dot warning" /></a>
@@ -252,6 +294,10 @@ function HomeView() {
       </div></section>
     </>
   );
+}
+
+function ClockBadge() {
+  return <><CalendarDays size={19} /><small>待跟进</small></>;
 }
 
 function ResumeView({ openUpload }: { openUpload: () => void }) {
@@ -271,38 +317,71 @@ function ResumeView({ openUpload }: { openUpload: () => void }) {
 function PositionsView({ openNewPosition }: { openNewPosition: () => void }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部类别");
-  const filtered = useMemo(() => companies.filter((company) => company.name.includes(query) || company.groups.some((group) => group.positions.some((position) => position.includes(query)))), [query]);
+  const [statusFilter, setStatusFilter] = useState("全部进度");
+  const [positionData, setPositionData] = useState(companies);
+  const [editing, setEditing] = useState<{ companyId: string; positionId: string } | null>(null);
+  const filtered = useMemo(() => positionData.filter((company) => company.name.includes(query) || company.groups.some((group) => group.positions.some((position) => position.title.includes(query)))), [query, positionData]);
+  const editingPosition = editing ? positionData.flatMap((company) => company.groups.flatMap((group) => group.positions)).find((position) => position.id === editing.positionId) : undefined;
+  const updateStage = (stage: ApplicationStage) => {
+    if (!editing) return;
+    setPositionData((items) => items.map((company) => company.id !== editing.companyId ? company : ({ ...company, groups: company.groups.map((group) => ({ ...group, positions: group.positions.map((position) => position.id === editing.positionId ? { ...position, stage } : position) })) })));
+    setEditing(null);
+  };
   return (
     <>
       <PageHeader eyebrow="公司 → 类别 → 具体岗位" title="目标岗位" description="岗位不依赖简历，可以先保存 JD，再决定何时生成分析。" action={<button className="primary-button" type="button" onClick={openNewPosition}><Plus size={17} />新建岗位</button>} />
-      <div className="position-toolbar"><label className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索公司或岗位" /></label><label className="select-button"><Filter size={15} /><select value={category} onChange={(event) => setCategory(event.target.value)}><option>全部类别</option><option>技术</option><option>产品</option><option>运营</option><option>市场</option></select><ChevronDown size={14} /></label><button className="secondary-button" type="button">全部状态 <ChevronDown size={14} /></button></div>
-      <div className="company-list">{filtered.map((company) => <article className="card company-card" key={company.id}><div className="company-heading"><span className={`company-mark ${company.id}`}>{company.mark}</span><div><h2>{company.name}</h2><p>{company.meta}</p></div><button className="icon-button" type="button" aria-label={`${company.name}更多操作`}><MoreHorizontal size={18} /></button></div><div className="category-grid">{company.groups.map((group) => <section className={`category-column ${category !== "全部类别" && category !== group.category ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{group.positions.length ? group.positions.map((position) => <a href={position.includes("AI") ? "/positions/byte-pm" : "/positions/sample"} className="position-row" key={position}><strong>{position}</strong><small>{position.includes("AI") ? "北京 · Flow 产品" : "查看岗位详情"}</small><ChevronRight size={14} /></a>) : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>)}</div></article>)}</div>
+      <div className="position-toolbar"><label className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索公司或岗位" /></label><label className="select-button"><Filter size={15} /><select value={category} onChange={(event) => setCategory(event.target.value)}><option>全部类别</option><option>技术</option><option>产品</option><option>运营</option><option>市场</option></select><ChevronDown size={14} /></label><label className="select-button"><CircleDot size={14} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>全部进度</option><option>准备中</option><option>已投递</option><option>面试中</option><option>Offer 阶段</option></select><ChevronDown size={14} /></label></div>
+      <div className="company-list">{filtered.map((company) => {
+        const companyPositions = company.groups.flatMap((group) => group.positions);
+        const interviewCount = companyPositions.filter((position) => ["一面中","二面中","终面中"].includes(position.stage)).length;
+        const submittedCount = companyPositions.filter((position) => !["感兴趣","准备中"].includes(position.stage)).length;
+        const offerCount = companyPositions.filter((position) => ["Offer 沟通","已录用"].includes(position.stage)).length;
+        return <article className="card company-card" key={company.id}><div className="company-heading"><span className={`company-mark ${company.id}`}>{company.mark}</span><div><h2>{company.name}</h2><p>{companyPositions.length} 个岗位 · 已投递 {submittedCount} · 面试中 {interviewCount} · Offer {offerCount}</p></div><button className="icon-button" type="button" aria-label={`${company.name}更多操作`}><MoreHorizontal size={18} /></button></div><div className="category-grid">{company.groups.map((group) => {
+          const visibleByCategory = category === "全部类别" || category === group.category;
+          const groupPositions = group.positions.filter((position) => statusFilter === "全部进度" || position.stage === statusFilter || (statusFilter === "面试中" && ["一面中","二面中","终面中"].includes(position.stage)) || (statusFilter === "Offer 阶段" && ["Offer 沟通","已录用"].includes(position.stage)));
+          return <section className={`category-column ${!visibleByCategory ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{groupPositions.length ? groupPositions.map((position) => <div className="position-record" key={position.id}><a href={position.href} className="position-row"><strong>{position.title}</strong><small>{position.location}</small><span className="analysis-hint">{position.analysis}</span><ChevronRight size={14} /></a><button className={`application-stage ${stageTone(position.stage)}`} type="button" onClick={() => setEditing({ companyId: company.id, positionId: position.id })}>{position.stage}<ChevronDown size={11} /></button>{position.next && <span className="position-next"><CalendarDays size={11} />{position.next}</span>}</div>) : group.positions.length ? <p className="filtered-empty">当前筛选下无岗位</p> : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>;
+        })}</div></article>;
+      })}</div>
+      {editing && editingPosition && <StageModal position={editingPosition} close={() => setEditing(null)} update={updateStage} />}
     </>
   );
 }
 
 function MapView() {
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [quickView, setQuickView] = useState<"all" | "interview" | "attention" | "offer">("all");
+  const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
+  const toggleCategory = (category: Category) => setSelectedCategories((items) => items.includes(category) ? items.filter((item) => item !== category) : [...items, category]);
+  const showByte = quickView !== "offer" && (selectedCategories.length === 0 || selectedCategories.includes("产品") || selectedCategories.includes("市场"));
+  const showMeituan = quickView !== "offer" && (selectedCategories.length === 0 || selectedCategories.includes("产品") || selectedCategories.includes("运营"));
+  const showTencent = !["interview","attention"].includes(quickView) && (selectedCategories.length === 0 || selectedCategories.includes("技术"));
   return (
     <>
-      <PageHeader eyebrow="全局视角" title="个人求职地图" description="所有岗位都会出现在这里。没有简历时仍可规划目标，上传后再补全证据。" action={<button className="secondary-button" type="button"><Settings2 size={16} />筛选视图</button>} />
+      <PageHeader eyebrow="全局视角" title="个人求职地图" description="所有岗位都会出现在这里。没有简历时仍可规划目标，上传后再补全证据。" action={<button className={`secondary-button ${filterOpen ? "filter-active" : ""}`} type="button" onClick={() => setFilterOpen(!filterOpen)}><SlidersHorizontal size={16} />筛选视图{(quickView !== "all" || selectedCategories.length > 0) && <span className="filter-count">{selectedCategories.length + (quickView !== "all" ? 1 : 0)}</span>}</button>} />
+      {filterOpen && <section className="card map-filter-panel"><div><strong>快捷视图</strong><div className="filter-chips">{([['all','全部目标'],['interview','面试进行中'],['attention','需要优先准备'],['offer','Offer 阶段']] as const).map(([value,label]) => <button className={quickView === value ? "active" : ""} type="button" onClick={() => setQuickView(value)} key={value}>{label}</button>)}</div></div><div><strong>岗位类别</strong><div className="filter-chips">{(["技术","产品","运营","市场"] as Category[]).map((item) => <button className={selectedCategories.includes(item) ? "active" : ""} type="button" onClick={() => toggleCategory(item)} key={item}>{item}</button>)}</div></div><button className="text-button" type="button" onClick={() => { setQuickView("all"); setSelectedCategories([]); }}>清除全部</button></section>}
+      {(quickView !== "all" || selectedCategories.length > 0) && <div className="active-filter-row"><span>当前视图</span>{quickView !== "all" && <button type="button" onClick={() => setQuickView("all")}>{quickView === "interview" ? "面试进行中" : quickView === "attention" ? "需要优先准备" : "Offer 阶段"}<X size={12} /></button>}{selectedCategories.map((item) => <button type="button" onClick={() => toggleCategory(item)} key={item}>{item}<X size={12} /></button>)}</div>}
       <div className="map-summary"><span><strong>3</strong>目标公司</span><span><strong>7</strong>具体岗位</span><span><strong>5</strong>正在准备</span><span><strong>2</strong>需要补强</span></div>
-      <section className="card career-map"><div className="map-grid" /><div className="map-connector c-one" /><div className="map-connector c-two" /><div className="map-connector c-three" /><div className="map-root"><span className="avatar large">林</span><strong>我的求职目标</strong><small>2026 届校招</small></div>
-        <MapCompany className="node-byte" mark="字节" name="字节跳动" subtitle="产品与市场方向" tags={["AI 产品经理", "策略产品", "商业化市场"]} status="证据覆盖较完整" tone="good" />
-        <MapCompany className="node-meituan" mark="美团" name="美团" subtitle="产品与运营方向" tags={["到店产品", "用户增长"]} status="1 个岗位待补强" tone="warning" />
-        <MapCompany className="node-tencent" mark="腾讯" name="腾讯" subtitle="技术与分析方向" tags={["商业分析"]} status="尚未开始分析" tone="muted" />
+      <section className="card career-map"><div className="map-grid" />{showByte && <div className="map-connector c-one" />}{showMeituan && <div className="map-connector c-two" />}{showTencent && <div className="map-connector c-three" />}<div className="map-root"><span className="avatar large">林</span><strong>我的求职目标</strong><small>{[showByte,showMeituan,showTencent].filter(Boolean).length} 家公司显示中</small></div>
+        {showByte && <MapCompany className="node-byte" mark="字节" name="字节跳动" subtitle="产品与市场方向" tags={["AI 产品经理", "策略产品", "商业化市场"]} stage="二面中" status="2 个高优问题待准备" tone="warning" />}
+        {showMeituan && <MapCompany className="node-meituan" mark="美团" name="美团" subtitle="产品与运营方向" tags={["到店产品", "用户增长"]} stage="一面中" status="1 个岗位待补强" tone="warning" />}
+        {showTencent && <MapCompany className="node-tencent" mark="腾讯" name="腾讯" subtitle="技术与分析方向" tags={["商业分析"]} stage="Offer 沟通" status="准备较完整" tone="good" />}
+        {![showByte,showMeituan,showTencent].some(Boolean) && <div className="map-no-results"><Map size={28} /><strong>没有符合条件的岗位</strong><p>尝试减少筛选条件或恢复全部目标。</p><button className="text-button" type="button" onClick={() => { setQuickView("all"); setSelectedCategories([]); }}>恢复全部</button></div>}
       </section>
     </>
   );
 }
 
-function MapCompany({ className, mark, name, subtitle, tags, status, tone }: { className: string; mark: string; name: string; subtitle: string; tags: string[]; status: string; tone: string }) {
-  return <a href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></a>;
+function MapCompany({ className, mark, name, subtitle, tags, stage, status, tone }: { className: string; mark: string; name: string; subtitle: string; tags: string[]; stage: ApplicationStage; status: string; tone: string }) {
+  return <a href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><em className={`application-stage ${stageTone(stage)}`}>{stage}</em><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></a>;
 }
 
 function AnalysisView({ tab, setTab }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void }) {
+  const [stage, setStage] = useState<ApplicationStage>("二面中");
+  const [stageOpen, setStageOpen] = useState(false);
   return (
     <>
       <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">字节跳动</a><ChevronRight size={13} /><span>产品</span><ChevronRight size={13} /><span>AI 产品经理实习生</span></div><h1>AI 产品经理实习生</h1><p>北京 · Flow 产品团队 · JD-2026-0821</p></div><button className="primary-button" type="button"><RefreshCw size={15} />重新生成</button></div>
+      <section className="card application-progress"><div className="progress-heading"><div><span>求职进度</span><strong>下一安排：8 月 21 日 15:00 二面</strong></div><div className="stage-edit-wrap"><button className={`application-stage ${stageTone(stage)}`} type="button" onClick={() => setStageOpen(!stageOpen)}>{stage}<ChevronDown size={12} /></button>{stageOpen && <div className="stage-mini-menu">{ALL_STAGES.slice(1, 9).map((item) => <button type="button" onClick={() => { setStage(item); setStageOpen(false); }} key={item}><i className={`stage-dot ${stageTone(item)}`} />{item}{stage === item && <Check size={13} />}</button>)}</div>}</div></div><div className="stage-timeline">{["已投递","一面通过","二面中","终面","Offer"].map((item,index) => <div className={index < 2 ? "done" : index === 2 ? "current" : ""} key={item}><span>{index < 2 ? <Check size={13} /> : index + 1}</span><small>{item}</small></div>)}</div><div className="progress-prep-note"><Sparkles size={14} /><span><strong>准备状态：</strong>还有 2 个高优先级问题未完成，建议二面前重点准备方案取舍与个人贡献。</span></div></section>
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
       {tab === "evidence" && <EvidencePanel />}{tab === "resume" && <ResumeSuggestionsPanel />}{tab === "interview" && <InterviewPanel />}
     </>
@@ -328,6 +407,11 @@ function SourcePanel() {
 
 function UploadModal({ close }: { close: () => void }) {
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="upload-title"><div className="modal-heading"><div><span className="modal-icon"><Upload /></span><div><h2 id="upload-title">更新母版简历</h2><p>更新后，相关岗位会标记为需要重新生成</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭"><X size={18} /></button></div><button className="upload-zone" type="button"><Upload size={28} /><strong>拖入 PDF，或点击选择文件</strong><span>仅支持文本型 PDF，最大 10 MB</span></button><div className="modal-note"><ShieldCheck size={17} /><p>原始 PDF 完成解析后删除，仅保存结构化文本。岗位定制不会反向覆盖母版简历。</p></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close}>取消</button><button className="primary-button" type="button" onClick={close}>开始解析</button></div></section></div>;
+}
+
+function StageModal({ position, close, update }: { position: DemoPosition; close: () => void; update: (stage: ApplicationStage) => void }) {
+  const [selected, setSelected] = useState<ApplicationStage>(position.stage);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="modal-card stage-modal" role="dialog" aria-modal="true" aria-labelledby="stage-title"><div className="modal-heading"><div><span className="modal-icon green"><CircleDot /></span><div><h2 id="stage-title">更新求职进度</h2><p>{position.title}</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭"><X size={18} /></button></div><div className="stage-picker">{ALL_STAGES.map((item) => <button className={selected === item ? "active" : ""} type="button" onClick={() => setSelected(item)} key={item}><i className={`stage-dot ${stageTone(item)}`} /><span>{item}</span>{selected === item && <Check size={15} />}</button>)}</div><div className="stage-extra-fields"><label><span>发生时间</span><input type="date" defaultValue="2026-08-17" /></label><label><span>下一安排（选填）</span><input placeholder="例如：8 月 21 日 15:00 二面" /></label><label><span>备注（选填）</span><textarea rows={3} placeholder="记录面试形式、需要跟进的信息……" /></label></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close}>取消</button><button className="primary-button" type="button" onClick={() => update(selected)}>保存进度</button></div></section></div>;
 }
 
 function PositionModal({ close }: { close: () => void }) {
