@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-html-link-for-pages -- full document navigation is intentional for Vinext dynamic routes */
 
 import {
   AlertCircle,
@@ -36,7 +37,6 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase, isSupabaseConfigured } from "@/lib/supabase-browser";
 import type { SupabasePublicConfig } from "@/lib/supabase-config";
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 
 export type OfferMapView = "home" | "resume" | "positions" | "map" | "analysis";
 type DemoState = "normal" | "empty" | "loading" | "error";
@@ -254,26 +254,26 @@ function AppHeader({ view, companies, userEmail, signOut }: { view: OfferMapView
     <>
       <header className="app-header">
         <div className="header-inner">
-          <Link className="brand" href="/" aria-label="OfferMap 首页">
+          <a className="brand" href="/" aria-label="OfferMap 首页">
             <span className="brand-symbol"><Route size={18} /></span><span>OfferMap</span>
-          </Link>
+          </a>
           <nav className="main-nav" aria-label="主导航">
-            {NAV_ITEMS.map((item) => <Link key={item.key} href={item.href} className={navView === item.key ? "active" : ""}>{item.label}</Link>)}
+            {NAV_ITEMS.map((item) => <a key={item.key} href={item.href} className={navView === item.key ? "active" : ""}>{item.label}</a>)}
           </nav>
           <div className="header-tools">
             <button className="header-search-button" type="button" onClick={() => setSearchOpen(true)} aria-label="全局搜索"><Search size={16} /><span>搜索</span><kbd>⌘ K</kbd></button>
             <div className="header-menu-wrap">
               <button className="header-new-button" type="button" onClick={() => { setCreateOpen(!createOpen); setProfileOpen(false); }} aria-expanded={createOpen}><Plus size={15} />新建</button>
-              {createOpen && <div className="header-popover create-menu"><Link href="/positions"><BriefcaseBusiness size={16} /><span><strong>新建岗位</strong><small>保存公司、类别与 JD</small></span></Link><Link href="/resume"><Upload size={16} /><span><strong>上传简历</strong><small>更新母版简历版本</small></span></Link></div>}
+              {createOpen && <div className="header-popover create-menu"><a href="/positions"><BriefcaseBusiness size={16} /><span><strong>新建岗位</strong><small>保存公司、类别与 JD</small></span></a><a href="/resume"><Upload size={16} /><span><strong>上传简历</strong><small>更新母版简历版本</small></span></a></div>}
             </div>
             <div className="header-menu-wrap">
               <button className="avatar" type="button" onClick={() => { setProfileOpen(!profileOpen); setCreateOpen(false); }} aria-label="个人中心" aria-expanded={profileOpen}>林</button>
-              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar">林</span><div><strong>{userEmail ? userEmail.split("@")[0] : "林同学"}</strong><small>{userEmail ?? "演示账号 · 产品方向"}</small></div></div><Link href="/resume"><FileText size={15} />母版简历</Link><Link href="/map"><Map size={15} />我的求职地图</Link>{signOut ? <button type="button" onClick={signOut}><LogOut size={15} />退出登录</button> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
+              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar">林</span><div><strong>{userEmail ? userEmail.split("@")[0] : "林同学"}</strong><small>{userEmail ?? "演示账号 · 产品方向"}</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a>{signOut ? <button type="button" onClick={signOut}><LogOut size={15} />退出登录</button> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
             </div>
           </div>
         </div>
       </header>
-      {searchOpen && <div className="search-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSearchOpen(false)}><section className="global-search" role="dialog" aria-modal="true" aria-label="全局搜索"><div className="global-search-input"><Search size={19} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索公司、岗位或类别" /><button type="button" onClick={() => setSearchOpen(false)}>ESC</button></div><div className="search-result-label">{searchQuery ? `找到 ${searchResults.length} 个结果` : "最近访问"}</div><div className="search-results">{searchResults.slice(0, 6).map((position) => <Link href={position.href} key={position.id}><span className="search-result-icon"><BriefcaseBusiness size={16} /></span><span><strong>{position.title}</strong><small>{position.company} · {position.category} · {position.location}</small></span><em className={`application-stage ${stageTone(position.stage)}`}>{position.stage}</em></Link>)}</div><div className="search-help"><Command size={13} />输入关键词搜索，按 Enter 打开</div></section></div>}
+      {searchOpen && <div className="search-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSearchOpen(false)}><section className="global-search" role="dialog" aria-modal="true" aria-label="全局搜索"><div className="global-search-input"><Search size={19} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索公司、岗位或类别" /><button type="button" onClick={() => setSearchOpen(false)}>ESC</button></div><div className="search-result-label">{searchQuery ? `找到 ${searchResults.length} 个结果` : "最近访问"}</div><div className="search-results">{searchResults.slice(0, 6).map((position) => <a href={position.href} key={position.id}><span className="search-result-icon"><BriefcaseBusiness size={16} /></span><span><strong>{position.title}</strong><small>{position.company} · {position.category} · {position.location}</small></span><em className={`application-stage ${stageTone(position.stage)}`}>{position.stage}</em></a>)}</div><div className="search-help"><Command size={13} />输入关键词搜索，按 Enter 打开</div></section></div>}
     </>
   );
 }
@@ -324,17 +324,17 @@ function HomeView({ companies }: { companies: WorkspaceCompany[] }) {
       <section className="home-intro"><p className="eyebrow">你的应届求职工作台</p><h1>今天，准备哪一部分？</h1><p>简历、岗位和求职地图彼此独立。你可以从任何一处开始，也可以随时回来继续。</p></section>
       <div className="entry-grid">
         {entries.map(({ title, body, meta, icon: Icon, href, tone }) => (
-          <Link href={href} className="entry-card card" key={title} aria-label={`进入${title}`}>
+          <a href={href} className="entry-card card" key={title} aria-label={`进入${title}`}>
             <span className={`entry-icon ${tone}`}><Icon /></span><h2>{title}</h2><p>{body}</p>
             <span className="entry-meta"><CircleDot size={13} />{meta}</span>
             <span className="entry-cta">进入查看 <ArrowRight size={14} /></span>
             <span className="entry-arrow"><ArrowUpRight size={17} /></span>
-          </Link>
+          </a>
         ))}
       </div>
-      {nextPositions.length > 0 && <section className="next-section"><div className="section-heading"><h2>接下来</h2><Link href="/positions">管理全部进度 <ChevronRight size={15} /></Link></div><div className="next-grid">{nextPositions.map((position, index) => <Link href={position.href} className={`card next-card ${index === 0 ? "urgent" : ""}`} key={position.id}><span className={`date-block ${index === 1 ? "soft" : ""}`}>{index === 0 ? <><CalendarDays size={19} /><small>{position.stage}</small></> : <ClockBadge />}</span><div><span className="next-kicker">{position.next} · {position.stage}</span><h3>{position.company} · {position.title}</h3><p>{position.analysis}</p></div><span className="next-arrow"><ArrowRight size={16} /></span></Link>)}</div></section>}
-      <section className="recent-section"><div className="section-heading"><h2>最近准备</h2><Link href="/positions">查看全部 <ChevronRight size={15} /></Link></div><div className="recent-grid">
-        {positions.slice(0, 3).map((position) => <Link href={position.href} className="recent-item" key={position.id}><span className="company-mark">{position.company.slice(0,2)}</span><span><strong>{position.title}</strong><small>{position.stage} · {position.analysis}</small></span><i className={`live-dot ${stageTone(position.stage) === "interview" ? "warning" : stageTone(position.stage) === "planning" ? "muted" : ""}`} /></Link>)}
+      {nextPositions.length > 0 && <section className="next-section"><div className="section-heading"><h2>接下来</h2><a href="/positions">管理全部进度 <ChevronRight size={15} /></a></div><div className="next-grid">{nextPositions.map((position, index) => <a href={position.href} className={`card next-card ${index === 0 ? "urgent" : ""}`} key={position.id}><span className={`date-block ${index === 1 ? "soft" : ""}`}>{index === 0 ? <><CalendarDays size={19} /><small>{position.stage}</small></> : <ClockBadge />}</span><div><span className="next-kicker">{position.next} · {position.stage}</span><h3>{position.company} · {position.title}</h3><p>{position.analysis}</p></div><span className="next-arrow"><ArrowRight size={16} /></span></a>)}</div></section>}
+      <section className="recent-section"><div className="section-heading"><h2>最近准备</h2><a href="/positions">查看全部 <ChevronRight size={15} /></a></div><div className="recent-grid">
+        {positions.slice(0, 3).map((position) => <a href={position.href} className="recent-item" key={position.id}><span className="company-mark">{position.company.slice(0,2)}</span><span><strong>{position.title}</strong><small>{position.stage} · {position.analysis}</small></span><i className={`live-dot ${stageTone(position.stage) === "interview" ? "warning" : stageTone(position.stage) === "planning" ? "muted" : ""}`} /></a>)}
       </div></section>
     </>
   );
@@ -397,7 +397,7 @@ function PositionsView({ openNewPosition, companies, onStageUpdate }: { openNewP
         return <article className="card company-card" key={company.id}><div className="company-heading"><span className={`company-mark ${company.id}`}>{company.mark}</span><div><h2>{company.name}</h2><p>{companyPositions.length} 个岗位 · 已投递 {submittedCount} · 面试中 {interviewCount} · Offer {offerCount}</p></div><button className="icon-button" type="button" aria-label={`${company.name}更多操作`}><MoreHorizontal size={18} /></button></div><div className="category-grid">{company.groups.map((group) => {
           const visibleByCategory = category === "全部类别" || category === group.category;
           const groupPositions = group.positions.filter((position) => statusFilter === "全部进度" || position.stage === statusFilter || (statusFilter === "面试中" && ["一面中","二面中","终面中"].includes(position.stage)) || (statusFilter === "Offer 阶段" && ["Offer 沟通","已录用"].includes(position.stage)));
-          return <section className={`category-column ${!visibleByCategory ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{groupPositions.length ? groupPositions.map((position) => <div className="position-record" key={position.id}><Link href={position.href} className="position-row"><strong>{position.title}</strong><small>{position.location}</small><span className="analysis-hint">{position.analysis}</span><ChevronRight size={14} /></Link><button className={`application-stage ${stageTone(position.stage)}`} type="button" onClick={() => setEditing({ companyId: company.id, positionId: position.id })}>{position.stage}<ChevronDown size={11} /></button>{position.next && <span className="position-next"><CalendarDays size={11} />{position.next}</span>}</div>) : group.positions.length ? <p className="filtered-empty">当前筛选下无岗位</p> : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>;
+          return <section className={`category-column ${!visibleByCategory ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{groupPositions.length ? groupPositions.map((position) => <div className="position-record" key={position.id}><a href={position.href} className="position-row"><strong>{position.title}</strong><small>{position.location}</small><span className="analysis-hint">{position.analysis}</span><ChevronRight size={14} /></a><button className={`application-stage ${stageTone(position.stage)}`} type="button" onClick={() => setEditing({ companyId: company.id, positionId: position.id })}>{position.stage}<ChevronDown size={11} /></button>{position.next && <span className="position-next"><CalendarDays size={11} />{position.next}</span>}</div>) : group.positions.length ? <p className="filtered-empty">当前筛选下无岗位</p> : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>;
         })}</div></article>;
       })}</div>
       {editing && editingPosition && <StageModal position={editingPosition} close={() => setEditing(null)} update={updateStage} />}
@@ -439,7 +439,7 @@ function MapView({ companies }: { companies: WorkspaceCompany[] }) {
 }
 
 function MapCompany({ className, mark, name, subtitle, tags, stage, status, tone }: { className: string; mark: string; name: string; subtitle: string; tags: string[]; stage: ApplicationStage; status: string; tone: string }) {
-  return <Link href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><em className={`application-stage ${stageTone(stage)}`}>{stage}</em><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></Link>;
+  return <a href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><em className={`application-stage ${stageTone(stage)}`}>{stage}</em><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></a>;
 }
 
 function AnalysisView({ tab, setTab }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void }) {
@@ -447,7 +447,7 @@ function AnalysisView({ tab, setTab }: { tab: AnalysisTab; setTab: (tab: Analysi
   const [stageOpen, setStageOpen] = useState(false);
   return (
     <>
-      <div className="analysis-heading"><div><div className="breadcrumb"><Link href="/positions">字节跳动</Link><ChevronRight size={13} /><span>产品</span><ChevronRight size={13} /><span>AI 产品经理实习生</span></div><h1>AI 产品经理实习生</h1><p>北京 · Flow 产品团队 · JD-2026-0821</p></div><button className="primary-button" type="button"><RefreshCw size={15} />重新生成</button></div>
+      <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">字节跳动</a><ChevronRight size={13} /><span>产品</span><ChevronRight size={13} /><span>AI 产品经理实习生</span></div><h1>AI 产品经理实习生</h1><p>北京 · Flow 产品团队 · JD-2026-0821</p></div><button className="primary-button" type="button"><RefreshCw size={15} />重新生成</button></div>
       <section className="card application-progress"><div className="progress-heading"><div><span>求职进度</span><strong>下一安排：8 月 21 日 15:00 二面</strong></div><div className="stage-edit-wrap"><button className={`application-stage ${stageTone(stage)}`} type="button" onClick={() => setStageOpen(!stageOpen)}>{stage}<ChevronDown size={12} /></button>{stageOpen && <div className="stage-mini-menu">{ALL_STAGES.slice(1, 9).map((item) => <button type="button" onClick={() => { setStage(item); setStageOpen(false); }} key={item}><i className={`stage-dot ${stageTone(item)}`} />{item}{stage === item && <Check size={13} />}</button>)}</div>}</div></div><div className="stage-timeline">{["已投递","一面通过","二面中","终面","Offer"].map((item,index) => <div className={index < 2 ? "done" : index === 2 ? "current" : ""} key={item}><span>{index < 2 ? <Check size={13} /> : index + 1}</span><small>{item}</small></div>)}</div><div className="progress-prep-note"><Sparkles size={14} /><span><strong>准备状态：</strong>还有 2 个高优先级问题未完成，建议二面前重点准备方案取舍与个人贡献。</span></div></section>
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
       {tab === "evidence" && <EvidencePanel />}{tab === "resume" && <ResumeSuggestionsPanel />}{tab === "interview" && <InterviewPanel />}
