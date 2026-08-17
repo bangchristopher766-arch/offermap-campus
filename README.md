@@ -8,7 +8,8 @@ OfferMap 把一份母版简历和多个目标岗位连接起来，按「公司 �
 - 所有 AI 判断都必须引用 JD 或简历原文。
 - 不输出不可解释的匹配分；使用「证据充分 / 部分支持 / 暂无证据」。
 - 面试地图沿着「JD 要求 → 简历经历 → 面试官关注点 → 主问题 → 连环追问 → 回答准备」展开。
-- 无外部凭据时，首页以完整演示数据运行；配置后可接真实 PDF、Supabase 和千问。
+- 无外部凭据时，首页以完整演示数据运行；配置 Supabase 后启用邮箱 Magic Link 登录、账号数据隔离和永久保存。
+- 公司、岗位与求职阶段使用真实数据库；每次阶段变化都会留下历史事件。
 
 ## 本地运行
 
@@ -22,10 +23,20 @@ npm run dev
 
 ## 外部服务配置
 
-1. 在 Supabase 创建项目，执行 `supabase/migrations/0001_offermap.sql`。
+1. 在 Supabase 创建项目，依次执行 `supabase/migrations/0001_offermap.sql` 和 `supabase/migrations/0002_application_tracking.sql`。
 2. 把项目 URL 与 anon key 写入 `.env.local`。
-3. 在阿里云百炼创建 API Key，并填写 `DASHSCOPE_API_KEY`。
-4. 服务端通过兼容 Chat Completions 接口调用千问，默认模型可用 `DASHSCOPE_MODEL` 调整。
+3. 在 Supabase Authentication 中启用 Email，并把本地地址与部署域名加入 Redirect URLs。
+4. 在阿里云百炼创建 API Key，并填写 `DASHSCOPE_API_KEY`。
+5. 服务端通过兼容 Chat Completions 接口调用千问，默认模型可用 `DASHSCOPE_MODEL` 调整。
+
+部署环境需要配置：
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+```
+
+两项同时存在时页面会进入真实登录模式；任一缺失时继续使用演示数据，不会发起未授权的数据写入。
 
 ## 关键接口
 
@@ -35,6 +46,7 @@ npm run dev
 - `/api/companies/:id`：修改或级联删除公司。
 - `/api/companies/:id/positions`：创建具体岗位。
 - `/api/positions/:id`：修改、移动或删除岗位。
+- `/api/positions/:id/application`：读取或更新岗位求职阶段，并记录阶段历史。
 
 ## 可靠性边界
 

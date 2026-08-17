@@ -55,3 +55,20 @@ test("includes a bespoke social preview and removes starter assets", async () =>
   await access(new URL("../public/og.png", import.meta.url));
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });
+
+test("includes authenticated persistence and application tracking", async () => {
+  const [component, browserClient, applicationRoute, migration] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase-browser.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/application/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/0002_application_tracking.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /signInWithOtp/);
+  assert.match(component, /authenticatedFetch/);
+  assert.match(component, /实时数据已连接/);
+  assert.match(browserClient, /NEXT_PUBLIC_SUPABASE_URL/);
+  assert.match(applicationRoute, /auth\.getUser/);
+  assert.match(applicationRoute, /application_events/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /users_manage_own_applications/);
+});

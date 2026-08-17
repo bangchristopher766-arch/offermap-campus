@@ -10,7 +10,7 @@ function tokenFrom(request: Request) {
 export async function GET(request: Request) {
   try {
     const supabase = createUserSupabase(tokenFrom(request));
-    const { data, error } = await supabase.from("companies").select("*, positions(*)").order("created_at");
+    const { data, error } = await supabase.from("companies").select("*, positions(*, applications(*))").order("created_at");
     if (error) throw error;
     return Response.json({ data });
   } catch (error) {
