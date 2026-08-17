@@ -33,7 +33,7 @@ npm run dev
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 ```
 
 两项同时存在时页面会进入真实登录模式；任一缺失时继续使用演示数据，不会发起未授权的数据写入。
