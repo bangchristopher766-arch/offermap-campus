@@ -126,3 +126,25 @@ test("implements private PDF resume versions", async () => {
   assert.match(migration, /auth\.uid\(\)/);
   assert.match(migration, /public, file_size_limit/);
 });
+
+test("persists grounded resume suggestions and interview maps", async () => {
+  const [component, analysisRoute, resumeRoute, interviewRoute, suggestionRoute, engine] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/resume-suggestions/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/interview-map/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resume-suggestions/[id]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/analysis-engine.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(analysisRoute, /resume_suggestions/);
+  assert.match(analysisRoute, /interview_questions/);
+  assert.match(resumeRoute, /resumeSuggestionsSchema/);
+  assert.match(resumeRoute, /analysisContext/);
+  assert.match(interviewRoute, /interviewMapSchema/);
+  assert.match(interviewRoute, /question_followups/);
+  assert.match(suggestionRoute, /accepted/);
+  assert.match(engine, /EVIDENCE_MAP/);
+  assert.match(component, /生成定制建议/);
+  assert.match(component, /生成追问地图/);
+  assert.match(component, /navigator\.clipboard/);
+});

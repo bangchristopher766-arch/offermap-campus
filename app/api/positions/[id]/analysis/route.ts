@@ -35,6 +35,27 @@ async function loadEvidence(supabase: ReturnType<typeof createUserSupabase>, pos
   return data ?? [];
 }
 
+async function loadSuggestions(supabase: ReturnType<typeof createUserSupabase>, positionId: string) {
+  const { data, error } = await supabase.from("resume_suggestions")
+    .select("id,action,original_text,suggested_text,reason,risk,accepted,edited_text,created_at")
+    .eq("position_id", positionId).order("created_at");
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function loadQuestions(supabase: ReturnType<typeof createUserSupabase>, positionId: string) {
+  const { data, error } = await supabase.from("interview_questions")
+    .select("id,priority,priority_reason,main_question,intent,answer_structure,missing_information,risk,source_requirement_ids,source_evidence_ids,created_at,question_followups(id,sort_order,question)")
+    .eq("position_id", positionId).order("created_at");
+  if (error) throw error;
+  return (data ?? []).map((item) => ({
+    ...item,
+    question_followups: Array.isArray(item.question_followups)
+      ? [...item.question_followups].sort((a, b) => a.sort_order - b.sort_order)
+      : item.question_followups,
+  }));
+}
+
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const supabase = createUserSupabase(tokenFrom(request));
@@ -43,8 +64,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const position = await loadPosition(supabase, id);
     if (!position) return Response.json({ error: "岗位不存在或你无权查看" }, { status: 404 });
-    const evidence = await loadEvidence(supabase, id);
-    return Response.json({ data: { position, evidence } });
+    const [evidence, suggestions, questions] = await Promise.all([
+      loadEvidence(supabase, id), loadSuggestions(supabase, id), loadQuestions(supabase, id),
+    ]);
+    return Response.json({ data: { position, evidence, suggestions, questions } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "分析读取失败" }, { status: 503 });
   }
@@ -106,6 +129,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
     const { error: deleteError } = await supabase.from("requirements").delete().eq("position_id", positionId);
     if (deleteError) throw deleteError;
+    const [{ error: suggestionDeleteError }, { error: questionDeleteError }] = await Promise.all([
+      supabase.from("resume_suggestions").delete().eq("position_id", positionId),
+      supabase.from("interview_questions").delete().eq("position_id", positionId),
+    ]);
+    if (suggestionDeleteError) throw suggestionDeleteError;
+    if (questionDeleteError) throw questionDeleteError;
     if (oldEvidenceIds.length) await supabase.from("evidence_items").delete().in("id", oldEvidenceIds);
 
     for (const item of validated.requirements) {
@@ -168,7 +197,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const refreshed = await loadPosition(supabase, positionId);
     const evidence = await loadEvidence(supabase, positionId);
-    return Response.json({ data: { position: refreshed, evidence, meta: { model: result.model, provider: result.provider, durationMs } } });
+    const [suggestions, questions] = await Promise.all([loadSuggestions(supabase, positionId), loadQuestions(supabase, positionId)]);
+    return Response.json({ data: { position: refreshed, evidence, suggestions, questions, meta: { model: result.model, provider: result.provider, durationMs } } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "分析失败";
     try {

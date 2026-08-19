@@ -429,6 +429,7 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .truth-banner { display: flex; align-items: center; gap: 10px; padding: 15px 17px; border: 1px solid #dcebe2; border-radius: 16px; color: #287450; background: #f0f8f3; }
 .truth-banner span { font-size: 11px; line-height: 1.5; }
 .truth-banner strong { display: block; font-weight: 600; }
+.truth-banner .secondary-button { margin-left: auto; white-space: nowrap; }
 .suggestion-card { padding: 21px; }
 .suggestion-head { display: flex; align-items: center; gap: 10px; }
 .suggestion-head > span { padding: 5px 8px; border-radius: 7px; color: #6650b8; background: #eeeafd; font-size: 10px; font-weight: 500; }
@@ -443,12 +444,18 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .suggestion-reason { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 11px 12px; border-radius: 12px; color: #806737; background: #fff9eb; }
 .suggestion-reason svg { flex: 0 0 auto; margin-top: 1px; }
 .suggestion-reason p { margin: 0; font-size: 10px; line-height: 1.55; }
+.suggestion-risk, .question-risk { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 11px 12px; border-radius: 12px; color: #8a4c43; background: #fff1ef; }
+.suggestion-risk svg, .question-risk svg { flex: 0 0 auto; margin-top: 1px; }
+.suggestion-risk p, .question-risk p { margin: 0; font-size: 10px; line-height: 1.55; }
+.suggestion-risk strong, .question-risk strong { display: block; margin-bottom: 2px; font-weight: 600; }
 .suggestion-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }
 .question-legend { display: flex; gap: 22px; padding: 10px 13px; border: 1px dashed rgba(0,0,0,.12); border-radius: 13px; color: var(--tertiary); font-size: 10px; }
 .question-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.question-legend .secondary-button { margin-left: auto; }
 .question-legend i { width: 8px; height: 8px; border-radius: 50%; background: #ff9f0a; }
 .question-legend i.high { background: #ff453a; }
 .question-card { padding: 21px; border-left: 3px solid #d6675e; }
+.question-card.selected { border-color: rgba(214,103,94,.55); box-shadow: 0 10px 30px rgba(166,73,65,.07); }
 .question-top { display: flex; gap: 13px; align-items: center; }
 .question-number { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 13px; color: #a94942; background: #faecea; font-size: 12px; font-weight: 600; }
 .question-top small { color: #a94942; font-size: 9px; }
