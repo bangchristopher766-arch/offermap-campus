@@ -12,20 +12,10 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from("resumes")
-      .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
+      .select("id,name,version,file_size,page_count,structured_content,created_at,updated_at")
       .order("version", { ascending: false });
     if (error) throw error;
-
-    const versions = await Promise.all((data ?? []).map(async (resume) => {
-      let previewUrl: string | null = null;
-      if (resume.pdf_path) {
-        const { data: signed } = await supabase.storage.from("resume-pdfs").createSignedUrl(resume.pdf_path, 600);
-        previewUrl = signed?.signedUrl ?? null;
-      }
-      return { ...resume, preview_url: previewUrl };
-    }));
-
-    return Response.json({ data: versions });
+    return Response.json({ data });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "读取简历失败" }, { status: 503 });
   }

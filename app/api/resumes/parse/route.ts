@@ -1,6 +1,5 @@
-import { extractText } from "unpdf";
 import { createUserSupabase } from "@/lib/supabase";
-import { structureResumeText } from "@/lib/resume-structure";
+import { parseResumePdf } from "@/lib/resume-parser";
 
 export const runtime = "edge";
 
@@ -27,7 +26,7 @@ export async function POST(request: Request) {
   let uploadedPath = "";
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const result = await extractText(bytes, { mergePages: true });
+    const result = await parseResumePdf(bytes);
     const text = result.text.split(String.fromCharCode(0)).join("").trim();
     if (text.length < 80) return Response.json({ error: "没有识别到足够文字，暂不支持扫描版 PDF" }, { status: 422 });
 
@@ -37,7 +36,16 @@ export async function POST(request: Request) {
       .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
       .eq("content_hash", contentHash)
       .maybeSingle();
-    if (duplicate) return Response.json({ data: duplicate, duplicate: true });
+    if (duplicate) {
+      const { data: refreshed, error: refreshError } = await supabase
+        .from("resumes")
+        .update({ parsed_text: text, page_count: result.totalPages, structured_content: result.structuredContent, updated_at: new Date().toISOString() })
+        .eq("id", duplicate.id)
+        .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
+        .single();
+      if (refreshError) throw refreshError;
+      return Response.json({ data: refreshed, duplicate: true, reparsed: true });
+    }
 
     const { data: latest, error: latestError } = await supabase
       .from("resumes")
@@ -55,7 +63,6 @@ export async function POST(request: Request) {
       .upload(uploadedPath, bytes, { contentType: "application/pdf", upsert: false });
     if (uploadError) throw uploadError;
 
-    const structuredContent = structureResumeText(text);
     const { data: resume, error: insertError } = await supabase
       .from("resumes")
       .insert({
@@ -68,7 +75,7 @@ export async function POST(request: Request) {
         pdf_path: uploadedPath,
         file_size: file.size,
         page_count: result.totalPages,
-        structured_content: structuredContent,
+        structured_content: result.structuredContent,
       })
       .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
       .single();
@@ -77,8 +84,7 @@ export async function POST(request: Request) {
     await supabase.from("positions").update({ resume_id: resume.id }).eq("user_id", user.user.id);
     await supabase.from("positions").update({ analysis_status: "stale" }).eq("user_id", user.user.id).in("analysis_status", ["processing", "ready", "failed"]);
 
-    const { data: signed } = await supabase.storage.from("resume-pdfs").createSignedUrl(uploadedPath, 600);
-    return Response.json({ data: { ...resume, preview_url: signed?.signedUrl ?? null }, character_count: text.length }, { status: 201 });
+    return Response.json({ data: resume, character_count: text.length }, { status: 201 });
   } catch (error) {
     if (uploadedPath) await supabase.storage.from("resume-pdfs").remove([uploadedPath]);
     const message = error instanceof Error ? error.message : "PDF 解析失败";
