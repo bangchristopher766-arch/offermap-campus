@@ -24,7 +24,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (!accessToken) return Response.json({ error: "请先登录" }, { status: 401 });
     const bytes = await downloadPrivatePdf(resume.pdf_path, accessToken);
-    const result = await parseResumePdf(bytes);
+    const result = await parseResumePdf(bytes.slice());
     if (result.text.trim().length < 80) return Response.json({ error: "没有识别到足够文字，暂不支持扫描版 PDF" }, { status: 422 });
     const structuredContent = await enhanceResumeStructure(result.text, result.structuredContent);
 

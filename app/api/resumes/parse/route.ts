@@ -4,6 +4,7 @@ import { enhanceResumeStructure } from "@/lib/resume-ai-parser";
 import { uploadPrivatePdf } from "@/lib/supabase-storage";
 
 export const runtime = "edge";
+const EMPTY_FILE_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -29,24 +30,41 @@ export async function POST(request: Request) {
   let uploadedPath = "";
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const result = await parseResumePdf(bytes);
+    const signature = new TextDecoder().decode(bytes.slice(0, 5));
+    if (signature !== "%PDF-") return Response.json({ error: "上传内容不是有效 PDF" }, { status: 422 });
+    const contentHash = await sha256(bytes);
+    // PDF.js transfers/detaches its input buffer. Parse a copy so the original
+    // bytes remain intact for hashing, private storage, and upload verification.
+    const result = await parseResumePdf(bytes.slice());
     const text = result.text.split(String.fromCharCode(0)).join("").trim();
     if (text.length < 80) return Response.json({ error: "没有识别到足够文字，暂不支持扫描版 PDF" }, { status: 422 });
     const structuredContent = await enhanceResumeStructure(text, result.structuredContent);
 
-    const contentHash = await sha256(bytes);
-    const { data: duplicate } = await supabase
+    const { data: hashDuplicate } = await supabase
       .from("resumes")
       .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
       .eq("content_hash", contentHash)
       .maybeSingle();
+    let duplicate = hashDuplicate;
+    if (!duplicate) {
+      const { data: legacyEmptyVersion } = await supabase
+        .from("resumes")
+        .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
+        .eq("content_hash", EMPTY_FILE_HASH)
+        .eq("name", file.name.slice(0, 240))
+        .eq("file_size", file.size)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      duplicate = legacyEmptyVersion;
+    }
     if (duplicate) {
       if (!accessToken) return Response.json({ error: "请先登录" }, { status: 401 });
       const duplicatePath = duplicate.pdf_path || `${user.user.id}/${duplicate.id}/resume.pdf`;
       await uploadPrivatePdf(duplicatePath, bytes, accessToken, true);
       const { data: refreshed, error: refreshError } = await supabase
         .from("resumes")
-        .update({ name: file.name.slice(0, 240), parsed_text: text, pdf_path: duplicatePath, file_size: bytes.byteLength, page_count: result.totalPages, structured_content: structuredContent, updated_at: new Date().toISOString() })
+        .update({ name: file.name.slice(0, 240), parsed_text: text, content_hash: contentHash, pdf_path: duplicatePath, file_size: bytes.byteLength, page_count: result.totalPages, structured_content: structuredContent, updated_at: new Date().toISOString() })
         .eq("id", duplicate.id)
         .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
         .single();

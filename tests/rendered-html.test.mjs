@@ -104,6 +104,8 @@ test("implements private PDF resume versions", async () => {
   assert.match(component, /开始解析并保存/);
   assert.match(parseRoute, /storage/);
   assert.match(parseRoute, /analysis_status: "stale"/);
+  assert.match(parseRoute, /parseResumePdf\(bytes\.slice\(\)\)/);
+  assert.match(parseRoute, /EMPTY_FILE_HASH/);
   assert.doesNotMatch(listRoute, /createSignedUrl/);
   assert.match(pdfRoute, /Content-Type.*application\/pdf/s);
   assert.match(pdfRoute, /%PDF-/);
