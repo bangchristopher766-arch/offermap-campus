@@ -426,6 +426,23 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .source-panel section p + p { margin-top: 8px; }
 .source-panel mark { padding: 1px 2px; border-radius: 3px; color: inherit; background: #fff0ad; }
 .source-panel > .text-button { margin-top: 13px; }
+.tailored-resume { overflow: hidden; }
+.tailored-resume-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px; border-bottom: 1px solid var(--line); background: linear-gradient(135deg, #f7faff 0%, #fff 64%); }
+.tailored-resume-head span { color: var(--blue); font-size: 10px; font-weight: 600; }
+.tailored-resume-head h2 { margin: 6px 0 4px; font-size: 19px; font-weight: 650; }
+.tailored-resume-head p { margin: 0; color: var(--tertiary); font-size: 10px; }
+.tailored-resume-body { padding: 23px 27px 26px; }
+.tailored-resume-body > section + section { margin-top: 21px; }
+.tailored-resume-body h3 { margin: 0 0 9px; padding-bottom: 7px; border-bottom: 1px solid #d8dce3; color: #202124; font-size: 12px; letter-spacing: .05em; }
+.tailored-line { display: grid; grid-template-columns: 16px 1fr auto; gap: 7px; align-items: start; padding: 5px 7px; border-radius: 8px; }
+.tailored-line > span { color: #999da5; font-size: 10px; line-height: 1.7; }
+.tailored-line p { margin: 0; color: #41454c; font-size: 10px; line-height: 1.65; }
+.tailored-line em { padding: 3px 6px; border-radius: 6px; color: #2d6fb7; background: #eaf3ff; font-size: 8px; font-style: normal; white-space: nowrap; }
+.tailored-line.modified { margin: 3px 0; background: #f4f8fe; }
+.tailored-line.modified > span { color: var(--blue); }
+.module-section-title { padding: 3px 2px 0; }
+.module-section-title span { font-size: 13px; font-weight: 650; }
+.module-section-title p { margin: 4px 0 0; color: var(--tertiary); font-size: 9px; }
 .truth-banner { display: flex; align-items: center; gap: 10px; padding: 15px 17px; border: 1px solid #dcebe2; border-radius: 16px; color: #287450; background: #f0f8f3; }
 .truth-banner span { font-size: 11px; line-height: 1.5; }
 .truth-banner strong { display: block; font-weight: 600; }
@@ -589,6 +606,9 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
   .analysis-summary > div { flex: 0 0 auto; }
   .rewrite-grid { grid-template-columns: 1fr; }
   .rewrite-grid > svg { margin: -3px auto; transform: rotate(90deg); }
+  .tailored-resume-head { flex-direction: column; }
+  .tailored-line { grid-template-columns: 14px 1fr; }
+  .tailored-line em { grid-column: 2; width: max-content; }
   .followup-grid { grid-template-columns: 1fr; }
   .question-legend { flex-direction: column; gap: 7px; }
   .form-two { grid-template-columns: 1fr; }

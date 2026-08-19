@@ -25,6 +25,14 @@ async function loadPosition(supabase: ReturnType<typeof createUserSupabase>, id:
   return data;
 }
 
+async function loadResumeSummary(supabase: ReturnType<typeof createUserSupabase>, resumeId?: string | null) {
+  let query = supabase.from("resumes").select("id,name,version,structured_content");
+  query = resumeId ? query.eq("id", resumeId) : query.order("version", { ascending: false }).limit(1);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function loadEvidence(supabase: ReturnType<typeof createUserSupabase>, positionId: string) {
   const { data, error } = await supabase
     .from("requirements")
@@ -83,14 +91,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const position = await loadPosition(supabase, id);
     if (!position) return Response.json({ error: "岗位不存在或你无权查看" }, { status: 404 });
-    const [evidence, suggestions, questions, completedRuns] = await Promise.all([
+    const [evidence, suggestions, questions, completedRuns, resume] = await Promise.all([
       loadEvidence(supabase, id), loadSuggestions(supabase, id), loadQuestions(supabase, id),
       supabase.from("ai_runs").select("task,prompt_version").eq("position_id", id).eq("status", "ready").in("task", ["resume-core", "interview-core"]),
+      loadResumeSummary(supabase, position.resume_id),
     ]);
     const completedRows = completedRuns.data ?? [];
-    const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && run.prompt_version === "resume-v3-minimal-faithful-rewrite");
+    const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && run.prompt_version === "resume-v4-cohesive-tailored-version");
     const interviewCompleted = completedRows.some((run) => run.task === "interview-core");
-    return Response.json({ data: { position, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted } } });
+    return Response.json({ data: { position, resume, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted } } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "分析读取失败" }, { status: 503 });
   }

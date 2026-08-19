@@ -110,8 +110,15 @@ type AnalysisPosition = {
   companies?: { name: string } | Array<{ name: string }> | null;
   applications?: Array<{ current_stage: string; next_event_at?: string | null; next_event_type?: string | null }>;
 };
+type AnalysisResume = {
+  id: string;
+  name: string;
+  version: number;
+  structured_content?: { sections?: ResumeSection[] } | null;
+};
 type PositionAnalysisData = {
   position: AnalysisPosition;
+  resume?: AnalysisResume | null;
   evidence: AnalysisEvidenceItem[];
   suggestions: ResumeSuggestionRecord[];
   questions: InterviewQuestionRecord[];
@@ -589,7 +596,7 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
       {running && <section className="card analysis-running-card"><div className="analysis-running-icon"><LoaderCircle className="state-spinner" size={24} /></div><div><strong>{runningKind === "resume" ? runningPhase === "expand" ? "核心定制建议已保存，正在补充细节" : "正在深度分析岗位定制简历" : runningKind === "interview" ? runningPhase === "expand" ? "核心面试问题已保存，正在扩展追问" : "正在深度分析面试追问地图" : "正在生成深度证据地图"}</strong><p>{runningKind === "resume" ? runningPhase === "expand" ? "正在避开重复内容，补充中低优先级要求和能力缺口；你已经可以查看第一批结果。" : "先深度判断最关键的简历取舍，再单独整理和校验来源 ID。" : runningKind === "interview" ? runningPhase === "expand" ? "正在补充不同考察角度；第一批高优先级问题已经可以查看。" : "先推理核心考察意图和问题链路，再单独整理和校验来源 ID。" : "正在拆解 JD、召回语义相近经历、组合多条证据并复核判断。"}</p><div className="loading-track"><span /></div></div></section>}
       {(!live || hasEvidence) && <>
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
-      {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制简历" body="只挑选少量真正值得调整的简历原文，根据 JD 做事实不变的针对性改写；没有改写空间时不会硬改。" action="生成定制建议" onAction={() => run("resume")} running={runningKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={runningKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={runningKind === "interview"} /> : <InterviewPanel />)}
+      {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} resume={data.resume} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制版简历" body="保留母版简历的完整结构，只对与 JD 最相关的经历做有针对性的重新表达；同一条经历只改写一次。" action="生成定制简历" onAction={() => run("resume")} running={runningKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={runningKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={runningKind === "interview"} /> : <InterviewPanel />)}
       </>}
     </>
   );
@@ -638,13 +645,30 @@ function NoResumeChanges({ onRegenerate, running = false }: { onRegenerate: () =
   return <section className="card analysis-empty-card module-pending"><span><ShieldCheck size={23} /></span><h2>没有值得硬改的内容</h2><p>当前证据没有支持可靠的针对性改写。系统已主动跳过可能夸大职责、添加新事实或重复套用 JD 的建议，保留母版原文更合适。</p><button className="secondary-button" type="button" onClick={() => void onRegenerate()} disabled={running}><RefreshCw size={14} />重新检查</button></section>;
 }
 
-function ResumeSuggestionsPanel({ items, onToggle, onRegenerate, running = false }: { items?: ResumeSuggestionRecord[]; onToggle?: (id: string, accepted: boolean) => Promise<void>; onRegenerate?: () => Promise<void>; running?: boolean }) {
+function ResumeSuggestionsPanel({ items, resume, onToggle, onRegenerate, running = false }: { items?: ResumeSuggestionRecord[]; resume?: AnalysisResume | null; onToggle?: (id: string, accepted: boolean) => Promise<void>; onRegenerate?: () => Promise<void>; running?: boolean }) {
   const [accepted, setAccepted] = useState<string[]>(items?.filter((item) => item.accepted).map((item) => item.id) ?? []);
   const [copied, setCopied] = useState("");
+  const [copiedFull, setCopiedFull] = useState(false);
   const liveItems = items ?? suggestions.map((item, index) => ({ id: `demo-${index}`, action: item.action === "改写" ? "rewrite" as const : "add" as const, original_text: item.original, suggested_text: item.revised, reason: item.reason, risk: "面试时需能够解释改写后的每项事实。", accepted: false }));
   const [selectedId, setSelectedId] = useState(liveItems[0]?.id ?? "");
   const selected = liveItems.find((item) => item.id === selectedId) ?? liveItems[0];
   const actionLabel = { keep: "保留", rewrite: "改写", add: "补充", deemphasize: "弱化" } as const;
+  const sections = resume?.structured_content?.sections?.filter((section) => section.items?.length) ?? [];
+  const comparable = (value: string) => value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+  const tailoredItem = (original: string) => {
+    const source = comparable(original);
+    const match = liveItems.find((item) => {
+      const candidate = comparable(item.original_text);
+      return source === candidate || source.includes(candidate) || candidate.includes(source);
+    });
+    return { text: match?.edited_text || match?.suggested_text || original, modified: Boolean(match) };
+  };
+  const copyFullResume = async () => {
+    const content = sections.map((section) => `${section.title}\n${section.items.map((item) => `• ${tailoredItem(item).text}`).join("\n")}`).join("\n\n");
+    await navigator.clipboard.writeText(content);
+    setCopiedFull(true);
+    window.setTimeout(() => setCopiedFull(false), 1600);
+  };
   const copy = async (item: ResumeSuggestionRecord) => {
     await navigator.clipboard.writeText(item.edited_text || item.suggested_text);
     setCopied(item.id);
@@ -656,7 +680,7 @@ function ResumeSuggestionsPanel({ items, onToggle, onRegenerate, running = false
     try { await onToggle?.(item.id, next); }
     catch { setAccepted((current) => next ? current.filter((id) => id !== item.id) : [...current, item.id]); }
   };
-  return <div className="analysis-layout"><div className="analysis-list"><div className="truth-banner"><ShieldCheck size={18} /><span><strong>克制改写</strong>每条母版原文最多一条建议，只调整表达顺序和重点，不增加未经证明的职责、方法或结果。</span>{onRegenerate && <button className="secondary-button compact" type="button" onClick={() => void onRegenerate()} disabled={running}><RefreshCw size={13} />重新生成</button>}</div>{liveItems.map((item) => <article className={`card suggestion-card ${selected?.id === item.id ? "selected" : ""}`} key={item.id}><div className="suggestion-head"><span>{actionLabel[item.action]}</span><h2>{item.action === "add" ? "建议补充内容" : "针对性改写"}</h2></div><div className="rewrite-grid"><div><small>母版原文</small><p>{item.original_text}</p></div><ArrowRight size={17} /><div className="revised"><small>建议版本</small><p>{item.edited_text || item.suggested_text}</p></div></div><div className="suggestion-reason"><Sparkles size={15} /><p>{item.reason}</p></div><div className="suggestion-risk"><AlertCircle size={14} /><p><strong>面试风险</strong>{item.risk}</p></div><div className="suggestion-actions"><button className="text-button" type="button" onClick={() => setSelectedId(item.id)}>查看关联 JD <ArrowRight size={13} /></button><button className="secondary-button compact" type="button" onClick={() => void copy(item)}><Copy size={14} />{copied === item.id ? "已复制" : "复制"}</button><button className={`primary-button compact ${accepted.includes(item.id) ? "accepted" : ""}`} type="button" onClick={() => void toggle(item)}>{accepted.includes(item.id) ? <><Check size={14} />已采纳</> : "采纳建议"}</button></div></article>)}</div><SourcePanel jdQuote={selected?.jd_quotes?.[0] ?? ""} resumeQuote={selected?.original_text ?? ""} /></div>;
+  return <div className="analysis-layout"><div className="analysis-list">{sections.length > 0 && <section className="card tailored-resume"><div className="tailored-resume-head"><div><span>岗位定制版 · 母版 v{resume?.version}</span><h2>{resume?.name?.replace(/\.pdf$/i, "") || "定制简历"}</h2><p>{liveItems.length} 处针对性调整，其余内容保持母版原文</p></div><button className="secondary-button compact" type="button" onClick={() => void copyFullResume()}><Copy size={14} />{copiedFull ? "已复制整版" : "复制定制版"}</button></div><div className="tailored-resume-body">{sections.map((section) => <section key={section.title}><h3>{section.title}</h3>{section.items.map((item, index) => { const tailored = tailoredItem(item); return <div className={`tailored-line ${tailored.modified ? "modified" : ""}`} key={`${section.title}-${index}`}><span>{tailored.modified ? <Sparkles size={13} /> : "•"}</span><p>{tailored.text}</p>{tailored.modified && <em>已针对 JD 调整</em>}</div>; })}</section>)}</div></section>}<div className="truth-banner"><ShieldCheck size={18} /><span><strong>一版完整定制简历</strong>保留完整结构，只改写与岗位最相关的内容；同一条母版原文不会出现多个版本。</span>{onRegenerate && <button className="secondary-button compact" type="button" onClick={() => void onRegenerate()} disabled={running}><RefreshCw size={13} />重新生成</button>}</div><div className="module-section-title"><span>改写明细</span><p>查看每一处修改的原因、JD 来源和面试风险</p></div>{liveItems.map((item) => <article className={`card suggestion-card ${selected?.id === item.id ? "selected" : ""}`} key={item.id}><div className="suggestion-head"><span>{actionLabel[item.action]}</span><h2>{item.action === "add" ? "建议补充内容" : "针对性改写"}</h2></div><div className="rewrite-grid"><div><small>母版原文</small><p>{item.original_text}</p></div><ArrowRight size={17} /><div className="revised"><small>建议版本</small><p>{item.edited_text || item.suggested_text}</p></div></div><div className="suggestion-reason"><Sparkles size={15} /><p>{item.reason}</p></div><div className="suggestion-risk"><AlertCircle size={14} /><p><strong>面试风险</strong>{item.risk}</p></div><div className="suggestion-actions"><button className="text-button" type="button" onClick={() => setSelectedId(item.id)}>查看关联 JD <ArrowRight size={13} /></button><button className="secondary-button compact" type="button" onClick={() => void copy(item)}><Copy size={14} />{copied === item.id ? "已复制" : "复制"}</button><button className={`primary-button compact ${accepted.includes(item.id) ? "accepted" : ""}`} type="button" onClick={() => void toggle(item)}>{accepted.includes(item.id) ? <><Check size={14} />已采纳</> : "采纳建议"}</button></div></article>)}</div><SourcePanel jdQuote={selected?.jd_quotes?.[0] ?? ""} resumeQuote={selected?.original_text ?? ""} /></div>;
 }
 
 function InterviewPanel({ items, evidence: evidenceItems = [], onRegenerate, running = false }: { items?: InterviewQuestionRecord[]; evidence?: AnalysisEvidenceItem[]; onRegenerate?: () => Promise<void>; running?: boolean }) {

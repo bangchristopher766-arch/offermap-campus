@@ -187,7 +187,7 @@ const groundedResumeSchema = z.object({
     risk: z.string().min(1),
     requirementIds: z.array(z.string()).min(1).max(2),
     evidenceIds: z.array(z.string()).length(1),
-  })).max(4),
+  })).max(6),
 });
 
 const groundedInterviewSchema = z.object({
@@ -276,8 +276,8 @@ function phaseInstruction(phase: GenerationPhase) {
 
 function resumePhaseInstruction(phase: GenerationPhase) {
   return phase === "core"
-    ? "这是核心批次。最多选择 3 条真正有改写价值的简历原文；如果只有 1 条值得改就只返回 1 条，如果都不值得改就返回空结果。"
-    : "这是补充批次。最多再选择 2 条尚未出现过、确实有改写价值的简历原文；没有新的改写空间就返回空结果。";
+    ? "这是核心批次。选择 2-4 条与岗位最相关、通过改写能明显提升针对性的简历原文。"
+    : "这是补充批次。最多再选择 2 条尚未出现过的原文，补齐不同的岗位能力维度；没有新的改写空间就返回空结果。";
 }
 
 async function deepPlan(input: {
@@ -290,8 +290,9 @@ async function deepPlan(input: {
   const configuration = getAiConfiguration();
   const reasoningModel = configuration.provider === "deepseek" ? process.env.AI_REASONING_MODEL?.trim() || configuration.model : configuration.model;
   const task = input.kind === "resume"
-    ? `为这份岗位做克制的定制简历改写。目标不是逐条迎合 JD，而是从已有简历中只挑少量真正能通过措辞调整而更贴合岗位的原文。
-事实边界：建议版本必须与选中的单条 resumeQuote 表达完全相同的事实，只能调整信息顺序、删减冗余或突出原文已经存在的能力；不得添加原文没有的项目、方法、指标、结果、职责或专业名词；不得把“参与”升级成“负责/主导”，不得把局部工作升级为搭建体系、制定策略或推动全局。如果需要补充新事实才能贴合 JD，就不要生成该条建议。不要输出 keep 或 add。每个 evidenceId 最多使用一次。${resumePhaseInstruction(input.phase)}`
+    ? `为这份岗位生成一版有明显针对性的定制简历。不是机械替换关键词，也不是只做微小同义改写；应当把原文中真实存在、与 JD 最相关的能力前置，并用岗位熟悉的表达重新组织动作、对象、方法和结果。
+允许的改写：调整句式和信息顺序；合并原文已经表达的相关动作；使用 JD 中与原文事实语义等价的能力词；把原文隐含但能直接推出的能力说清楚。
+事实边界：不得添加原文和对应证据无法支持的新项目、新指标、新结果或更高职责；不得把“参与”升级成“负责/主导”；不得把局部工作扩大成搭建完整体系或制定全局策略。每条建议只能对应一条 resumeQuote，同一 evidenceId 最多使用一次。不要输出 keep 或 add。${resumePhaseInstruction(input.phase)}`
     : "设计深度面试追问地图。问题要沿着 JD 要求、候选人证据、个人贡献、方法选择、结果、复盘和边界逐层深入，并识别能力缺口、夸大和空泛风险。";
   const messages = [
     {
@@ -375,22 +376,26 @@ function normalizeComparable(value: string) {
   return value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
 }
 
-function isFaithfulResumeRewrite(original: string, suggested: string) {
+function isFaithfulResumeRewrite(original: string, suggested: string, jdQuotes: string[]) {
   const source = normalizeComparable(original);
   const target = normalizeComparable(suggested);
   if (!source || !target || source === target) return false;
-  if (target.length > source.length * 1.3 + 12 || target.length < Math.max(12, source.length * 0.45)) return false;
+  if (target.length > source.length * 1.85 + 24 || target.length < Math.max(12, source.length * 0.4)) return false;
 
-  const ownershipClaims = ["主导", "牵头", "统筹", "负责", "独立", "从0到1", "从零到一", "搭建", "构建", "建立", "制定", "定义", "推动", "协同", "形成体系"];
-  if (ownershipClaims.some((claim) => target.includes(normalizeComparable(claim)) && !source.includes(normalizeComparable(claim)))) return false;
+  const leadershipClaims = ["主导", "牵头", "统筹", "负责", "独立负责", "从0到1", "从零到一"];
+  if (leadershipClaims.some((claim) => target.includes(normalizeComparable(claim)) && !source.includes(normalizeComparable(claim)))) return false;
+  if (source.includes("参与") && ["主导", "牵头", "负责", "独立"].some((claim) => target.includes(claim))) return false;
 
   const factualTokens = (value: string) => value.match(/[A-Za-z][A-Za-z0-9_.+#-]{2,}|\d+(?:\.\d+)?%?/g)?.map((token) => token.toLowerCase()) ?? [];
-  if (factualTokens(suggested).some((token) => !factualTokens(original).includes(token))) return false;
+  const allowedTokenText = `${original}\n${jdQuotes.join("\n")}`;
+  if (factualTokens(suggested).some((token) => !factualTokens(allowedTokenText).includes(token))) return false;
+  const originalNumbers = factualTokens(original).filter((token) => /^\d/.test(token));
+  if (factualTokens(suggested).filter((token) => /^\d/.test(token)).some((token) => !originalNumbers.includes(token))) return false;
 
   const sourceBigrams = new Set(Array.from({ length: Math.max(0, source.length - 1) }, (_, index) => source.slice(index, index + 2)));
   const targetBigrams = Array.from({ length: Math.max(0, target.length - 1) }, (_, index) => target.slice(index, index + 2));
   const retained = targetBigrams.filter((token) => sourceBigrams.has(token)).length;
-  return retained / Math.max(1, Math.min(sourceBigrams.size, targetBigrams.length)) >= 0.32;
+  return retained / Math.max(1, Math.min(sourceBigrams.size, targetBigrams.length)) >= 0.18;
 }
 
 async function runGroundedAnalysis(input: {
@@ -419,7 +424,7 @@ async function runGroundedAnalysis(input: {
       if (!requirementIds.length || evidenceIds.length !== 1) return [];
       const resumeQuotes = evidenceIds.map((id) => evidenceMap.get(id)?.quote).filter((quote): quote is string => Boolean(quote));
       const jdQuotes = requirementIds.map((id) => requirementMap.get(id)?.jdQuote).filter((quote): quote is string => Boolean(quote));
-      if (resumeQuotes.length !== 1 || !isFaithfulResumeRewrite(resumeQuotes[0], item.suggested)) return [];
+      if (resumeQuotes.length !== 1 || !isFaithfulResumeRewrite(resumeQuotes[0], item.suggested, jdQuotes)) return [];
       return [{
         id: item.id || `S${index + 1}`,
         action: item.action,

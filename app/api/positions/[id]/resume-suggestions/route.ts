@@ -4,7 +4,7 @@ import { runAnalysis } from "@/lib/analysis-engine";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "resume-v3-minimal-faithful-rewrite";
+const PROMPT_VERSION = "resume-v4-cohesive-tailored-version";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -124,7 +124,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       seenOriginals.add(originalKey);
       seenSuggested.add(suggestedKey);
       return true;
-    }).slice(0, phase === "core" ? 3 : 2);
+    }).slice(0, phase === "core" ? 4 : 2);
     if (freshSuggestions.length) {
       const { error: insertError } = await supabase.from("resume_suggestions").insert(freshSuggestions.map((item) => ({
         user_id: user.user.id,
