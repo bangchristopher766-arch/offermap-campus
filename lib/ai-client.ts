@@ -88,7 +88,7 @@ export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 4
         signal: controller.signal,
         body: JSON.stringify({
           model: configuration.model,
-          temperature,
+          temperature: configuration.provider === "zhipu" && temperature === 0 ? 0.01 : temperature,
           response_format: { type: "json_object" },
           messages,
         }),

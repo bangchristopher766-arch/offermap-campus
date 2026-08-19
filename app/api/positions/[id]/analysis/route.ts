@@ -4,7 +4,7 @@ import { runAnalysis } from "@/lib/analysis-engine";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "evidence-v1";
+const PROMPT_VERSION = "evidence-v2-line-ids";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
