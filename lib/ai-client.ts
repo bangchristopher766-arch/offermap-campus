@@ -52,10 +52,10 @@ function configuredProvider(): AiProvider {
 }
 
 function apiKeyFor(provider: AiProvider) {
-  if (process.env.AI_API_KEY) return process.env.AI_API_KEY;
-  if (provider === "zhipu") return process.env.ZHIPU_API_KEY;
-  if (provider === "deepseek") return process.env.DEEPSEEK_API_KEY;
-  return process.env.DASHSCOPE_API_KEY;
+  if (provider === "zhipu" && process.env.ZHIPU_API_KEY) return process.env.ZHIPU_API_KEY;
+  if (provider === "deepseek" && process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY;
+  if (provider === "dashscope" && process.env.DASHSCOPE_API_KEY) return process.env.DASHSCOPE_API_KEY;
+  return process.env.AI_API_KEY;
 }
 
 export function getAiConfiguration() {
