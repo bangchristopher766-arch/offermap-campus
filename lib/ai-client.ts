@@ -26,7 +26,7 @@ type JsonModelResult = {
 
 const providerDefaults: Record<AiProvider, { model: string; endpoint: string }> = {
   zhipu: {
-    model: "glm-4.7-flash",
+    model: "glm-4.5-flash",
     endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   },
   deepseek: {
@@ -77,24 +77,30 @@ export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 4
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(configuration.endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${configuration.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: configuration.model,
-        temperature,
-        response_format: { type: "json_object" },
-        messages,
-      }),
-    });
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await fetch(configuration.endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${configuration.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: configuration.model,
+          temperature,
+          response_format: { type: "json_object" },
+          messages,
+        }),
+      });
+      if (response.ok || response.status !== 429 || attempt === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+    }
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(`模型服务返回 ${response.status}${detail ? `：${detail.slice(0, 160)}` : ""}`);
+    if (!response?.ok) {
+      const detail = await response?.text().catch(() => "");
+      if (response?.status === 429) throw new Error("模型当前访问量较大，请稍后重新分析");
+      throw new Error(`模型服务返回 ${response?.status ?? "未知错误"}${detail ? `：${detail.slice(0, 160)}` : ""}`);
     }
 
     const payload = await response.json() as {

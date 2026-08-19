@@ -368,6 +368,25 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .progress-prep-note svg { flex: 0 0 auto; margin-top: 1px; }
 .progress-prep-note span { font-size: 10px; line-height: 1.5; }
 .progress-prep-note strong { font-weight: 600; }
+.analysis-run-note { display: flex; align-items: flex-start; gap: 7px; margin-top: 16px; padding: 11px 12px; border-radius: 11px; color: #4f6f60; background: #eef7f1; }
+.analysis-run-note svg { flex: 0 0 auto; margin-top: 1px; }
+.analysis-run-note span { font-size: 10px; line-height: 1.55; }
+.analysis-run-note strong { font-weight: 600; }
+.analysis-run-note.stale, .analysis-run-note.failed { color: #865e21; background: #fff6df; }
+.analysis-run-note.processing { color: #315f82; background: #eef6fc; }
+.analysis-state-card, .analysis-running-card { display: flex; align-items: center; gap: 16px; margin-top: 24px; padding: 24px; }
+.analysis-state-card strong, .analysis-running-card strong { display: block; font-size: 14px; font-weight: 600; }
+.analysis-state-card p, .analysis-running-card p { margin: 6px 0 0; color: var(--tertiary); font-size: 11px; line-height: 1.55; }
+.analysis-running-card > div:last-child { flex: 1; }
+.analysis-running-icon { width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 14px; color: var(--blue); background: #edf5ff; }
+.analysis-running-card .loading-track { margin-top: 14px; }
+.analysis-inline-error { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding: 12px 14px; border: 1px solid #ffd5d0; border-radius: 13px; color: #a6362d; background: #fff3f1; font-size: 11px; }
+.analysis-inline-error button { margin-left: auto; border: 0; color: #a6362d; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; }
+.analysis-empty-card { margin-top: 24px; padding: 52px 28px; text-align: center; }
+.analysis-empty-card > span { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto; border-radius: 16px; color: var(--blue); background: #edf5ff; }
+.analysis-empty-card h2 { margin: 17px 0 0; font-size: 20px; letter-spacing: -.02em; }
+.analysis-empty-card p { max-width: 570px; margin: 10px auto 20px; color: var(--tertiary); font-size: 12px; line-height: 1.65; }
+.analysis-empty-card.module-pending { margin-top: 0; }
 .analysis-tabs { width: max-content; max-width: 100%; display: flex; gap: 4px; margin: 27px 0 17px; padding: 4px; overflow-x: auto; border-radius: 13px; background: rgba(118, 118, 128, .1); }
 .analysis-tabs button { padding: 9px 16px; border: 0; border-radius: 10px; color: var(--secondary); background: transparent; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .analysis-tabs button.active { color: var(--ink); background: white; box-shadow: 0 1px 6px rgba(0, 0, 0, .08); font-weight: 500; }
@@ -380,7 +399,8 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .analysis-summary span { color: var(--tertiary); font-size: 10px; }
 .analysis-summary strong { margin-top: 5px; font-size: 17px; font-weight: 600; }
 .analysis-summary p { margin: 0 0 0 auto; padding-left: 20px; color: var(--tertiary); font-size: 10px; }
-.evidence-card { padding: 21px; }
+.evidence-card { padding: 21px; transition: border-color .2s ease, box-shadow .2s ease; }
+.evidence-card.selected { border-color: rgba(10,132,255,.28); box-shadow: 0 10px 30px rgba(10,132,255,.07); }
 .evidence-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .evidence-top span { color: var(--tertiary); font-size: 10px; }
 .evidence-top h2 { max-width: 640px; margin: 7px 0 0; font-size: 16px; line-height: 1.45; letter-spacing: -.01em; font-weight: 600; }
@@ -390,6 +410,9 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .evidence-status.missing { color: #b33730; background: #ffebe9; }
 .evidence-card blockquote { margin: 16px 0 0; padding: 13px 15px; border-left: 3px solid var(--blue); border-radius: 0 12px 12px 0; color: #515154; background: var(--soft); font-size: 13px; line-height: 1.6; }
 .evidence-card > p { margin: 14px 0 4px; color: var(--secondary); font-size: 12px; line-height: 1.58; }
+.evidence-action { margin-top: 13px; padding: 12px 13px; border-radius: 12px; color: #765f32; background: #fff9ea; }
+.evidence-action strong { display: block; font-size: 10px; font-weight: 600; }
+.evidence-action p { margin: 4px 0 0; font-size: 10px; line-height: 1.55; }
 .source-panel { position: sticky; top: 84px; padding: 21px; }
 .source-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
 .source-heading h2 { margin: 0; font-size: 17px; font-weight: 600; }
