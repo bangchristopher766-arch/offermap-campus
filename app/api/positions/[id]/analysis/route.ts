@@ -56,6 +56,25 @@ async function loadQuestions(supabase: ReturnType<typeof createUserSupabase>, po
   }));
 }
 
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function enrichSuggestions(suggestions: Awaited<ReturnType<typeof loadSuggestions>>, evidence: Awaited<ReturnType<typeof loadEvidence>>) {
+  return suggestions.map((suggestion) => ({
+    ...suggestion,
+    jd_quotes: evidence.filter((requirement) => {
+      const relations = Array.isArray(requirement.requirement_evidence)
+        ? requirement.requirement_evidence
+        : requirement.requirement_evidence ? [requirement.requirement_evidence] : [];
+      return relations.some((relation) => {
+        const sources = Array.isArray(relation.evidence_items) ? relation.evidence_items : relation.evidence_items ? [relation.evidence_items] : [];
+        return sources.some((source) => normalizeText(source.resume_quote) === normalizeText(suggestion.original_text));
+      });
+    }).map((requirement) => requirement.jd_quote).filter((quote, index, all) => all.indexOf(quote) === index).slice(0, 2),
+  }));
+}
+
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const supabase = createUserSupabase(tokenFrom(request));
@@ -64,10 +83,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const position = await loadPosition(supabase, id);
     if (!position) return Response.json({ error: "岗位不存在或你无权查看" }, { status: 404 });
-    const [evidence, suggestions, questions] = await Promise.all([
+    const [evidence, suggestions, questions, completedRuns] = await Promise.all([
       loadEvidence(supabase, id), loadSuggestions(supabase, id), loadQuestions(supabase, id),
+      supabase.from("ai_runs").select("task,prompt_version").eq("position_id", id).eq("status", "ready").in("task", ["resume-core", "interview-core"]),
     ]);
-    return Response.json({ data: { position, evidence, suggestions, questions } });
+    const completedRows = completedRuns.data ?? [];
+    const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && run.prompt_version === "resume-v3-minimal-faithful-rewrite");
+    const interviewCompleted = completedRows.some((run) => run.task === "interview-core");
+    return Response.json({ data: { position, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted } } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "分析读取失败" }, { status: 503 });
   }
@@ -135,6 +158,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     ]);
     if (suggestionDeleteError) throw suggestionDeleteError;
     if (questionDeleteError) throw questionDeleteError;
+    await supabase.from("ai_runs").delete().eq("position_id", positionId).in("task", ["resume-core", "resume-expand", "interview-core", "interview-expand"]);
     if (oldEvidenceIds.length) await supabase.from("evidence_items").delete().in("id", oldEvidenceIds);
 
     for (const item of validated.requirements) {

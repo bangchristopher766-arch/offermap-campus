@@ -431,6 +431,7 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .truth-banner strong { display: block; font-weight: 600; }
 .truth-banner .secondary-button { margin-left: auto; white-space: nowrap; }
 .suggestion-card { padding: 21px; }
+.suggestion-card.selected { border-color: #c9ddf7; box-shadow: 0 12px 28px rgba(41, 105, 190, 0.08); }
 .suggestion-head { display: flex; align-items: center; gap: 10px; }
 .suggestion-head > span { padding: 5px 8px; border-radius: 7px; color: #6650b8; background: #eeeafd; font-size: 10px; font-weight: 500; }
 .suggestion-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
@@ -449,6 +450,7 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .suggestion-risk p, .question-risk p { margin: 0; font-size: 10px; line-height: 1.55; }
 .suggestion-risk strong, .question-risk strong { display: block; margin-bottom: 2px; font-weight: 600; }
 .suggestion-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }
+.suggestion-actions .text-button { margin-right: auto; }
 .question-legend { display: flex; gap: 22px; padding: 10px 13px; border: 1px dashed rgba(0,0,0,.12); border-radius: 13px; color: var(--tertiary); font-size: 10px; }
 .question-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .question-legend .secondary-button { margin-left: auto; }

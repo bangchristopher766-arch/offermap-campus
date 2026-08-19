@@ -148,10 +148,15 @@ test("persists grounded resume suggestions and interview maps", async () => {
   assert.match(engine, /DEEP_ANALYSIS_PLAN/);
   assert.match(engine, /SOURCE_CATALOG/);
   assert.match(engine, /callTextModel/);
+  assert.match(engine, /isFaithfulResumeRewrite/);
+  assert.match(engine, /同一 evidenceId 只能出现一次/);
+  assert.match(engine, /不得把“参与”升级成“负责\/主导”/);
   assert.match(resumeRoute, /resume-\$\{phase\}/);
+  assert.match(resumeRoute, /resume-v3-minimal-faithful-rewrite/);
   assert.match(interviewRoute, /interview-\$\{phase\}/);
   assert.match(aiClient, /finishReason/);
   assert.match(component, /核心结果已生成/);
+  assert.match(component, /没有值得硬改的内容/);
   assert.match(component, /生成定制建议/);
   assert.match(component, /生成追问地图/);
   assert.match(component, /navigator\.clipboard/);

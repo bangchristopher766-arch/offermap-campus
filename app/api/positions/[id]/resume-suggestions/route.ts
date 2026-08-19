@@ -4,7 +4,7 @@ import { runAnalysis } from "@/lib/analysis-engine";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "resume-v2-two-stage-batched";
+const PROMPT_VERSION = "resume-v3-minimal-faithful-rewrite";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -29,6 +29,30 @@ async function loadEvidence(supabase: ReturnType<typeof createUserSupabase>, pos
     .eq("position_id", positionId).order("created_at");
   if (error) throw error;
   return data ?? [];
+}
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function resumeQuotesFromRequirement(requirement: Awaited<ReturnType<typeof loadEvidence>>[number]) {
+  const relations = Array.isArray(requirement.requirement_evidence)
+    ? requirement.requirement_evidence
+    : requirement.requirement_evidence ? [requirement.requirement_evidence] : [];
+  return relations.flatMap((relation) => {
+    const sources = Array.isArray(relation.evidence_items) ? relation.evidence_items : relation.evidence_items ? [relation.evidence_items] : [];
+    return sources.map((source) => source.resume_quote);
+  });
+}
+
+function enrichSuggestions(items: Awaited<ReturnType<typeof loadSuggestions>>, evidence: Awaited<ReturnType<typeof loadEvidence>>) {
+  return items.map((item) => ({
+    ...item,
+    jd_quotes: evidence.filter((requirement) => resumeQuotesFromRequirement(requirement).some((quote) => normalizeText(quote) === normalizeText(item.original_text)))
+      .map((requirement) => requirement.jd_quote)
+      .filter((quote, index, all) => all.indexOf(quote) === index)
+      .slice(0, 2),
+  }));
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -60,12 +84,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const analysisContext = JSON.stringify(evidence);
     const ai = getAiConfiguration();
     const current = await loadSuggestions(supabase, positionId);
-    const existingContext = phase === "expand" ? JSON.stringify(current.map((item) => ({ action: item.action, suggested: item.suggested_text }))) : "";
+    const existingContext = phase === "expand" ? JSON.stringify(current.map((item) => ({ action: item.action, original: item.original_text, suggested: item.suggested_text }))) : "";
     const inputHash = await sha256(`${PROMPT_VERSION}\n${phase}\n${ai.provider}\n${ai.model}\n${resume.content_hash}\n${position.jd_text}\n${analysisContext}\n${existingContext}`);
     const task = `resume-${phase}`;
     const { data: cachedRun } = await supabase.from("ai_runs").select("id,model,duration_ms")
       .eq("position_id", positionId).eq("task", task).eq("input_hash", inputHash).eq("status", "ready").maybeSingle();
-    if (cachedRun && current.length && !body.force) return Response.json({ data: { suggestions: current, meta: { model: cachedRun.model, cached: true } } });
+    if (cachedRun && !body.force) return Response.json({ data: { suggestions: enrichSuggestions(current, evidence), meta: { model: cachedRun.model, cached: true, resumeCompleted: true } } });
     if (cachedRun) await supabase.from("ai_runs").delete().eq("id", cachedRun.id);
 
     const { data: run, error: runError } = await supabase.from("ai_runs").insert({
@@ -84,16 +108,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const original = resume.parsed_text.includes(item.original)
         ? item.original
         : item.sourceQuotes.find((quote) => resume.parsed_text.includes(quote));
-      return original ? [{ ...item, original }] : item.action === "add" ? [item] : [];
+      return original ? [{ ...item, original }] : [];
     });
-    if (!suggestions.length) throw new Error("模型没有返回可定位的简历原文");
     if (phase === "core") {
       const { error: deleteError } = await supabase.from("resume_suggestions").delete().eq("position_id", positionId);
       if (deleteError) throw deleteError;
     }
-    const freshSuggestions = phase === "expand"
-      ? suggestions.filter((item) => !current.some((saved) => saved.suggested_text.trim() === item.suggested.trim()))
-      : suggestions;
+    const existingForDeduplication = phase === "expand" ? current : [];
+    const seenOriginals = new Set(existingForDeduplication.map((item) => normalizeText(item.original_text)));
+    const seenSuggested = new Set(existingForDeduplication.map((item) => normalizeText(item.suggested_text)));
+    const freshSuggestions = suggestions.filter((item) => {
+      const originalKey = normalizeText(item.original);
+      const suggestedKey = normalizeText(item.suggested);
+      if (seenOriginals.has(originalKey) || seenSuggested.has(suggestedKey)) return false;
+      seenOriginals.add(originalKey);
+      seenSuggested.add(suggestedKey);
+      return true;
+    }).slice(0, phase === "core" ? 3 : 2);
     if (freshSuggestions.length) {
       const { error: insertError } = await supabase.from("resume_suggestions").insert(freshSuggestions.map((item) => ({
         user_id: user.user.id,
@@ -113,7 +144,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       status: "ready", model: result.model, duration_ms: durationMs,
       input_tokens: result.usage?.prompt_tokens ?? null, output_tokens: result.usage?.completion_tokens ?? null,
     }).eq("id", runId);
-    return Response.json({ data: { suggestions: await loadSuggestions(supabase, positionId), meta: { model: result.model, provider: result.provider, durationMs, phase } } });
+    const saved = await loadSuggestions(supabase, positionId);
+    return Response.json({ data: { suggestions: enrichSuggestions(saved, evidence), meta: { model: result.model, provider: result.provider, durationMs, phase, resumeCompleted: true } } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "定制简历生成失败";
     try {

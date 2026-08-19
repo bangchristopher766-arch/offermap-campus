@@ -83,6 +83,7 @@ type ResumeSuggestionRecord = {
   risk: string;
   accepted: boolean;
   edited_text?: string | null;
+  jd_quotes?: string[];
 };
 type InterviewQuestionRecord = {
   id: string;
@@ -114,7 +115,7 @@ type PositionAnalysisData = {
   evidence: AnalysisEvidenceItem[];
   suggestions: ResumeSuggestionRecord[];
   questions: InterviewQuestionRecord[];
-  meta?: { model?: string; provider?: string; durationMs?: number; phase?: "core" | "expand" };
+  meta?: { model?: string; provider?: string; durationMs?: number; phase?: "core" | "expand"; resumeCompleted?: boolean; interviewCompleted?: boolean };
 };
 
 const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
@@ -588,7 +589,7 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
       {running && <section className="card analysis-running-card"><div className="analysis-running-icon"><LoaderCircle className="state-spinner" size={24} /></div><div><strong>{runningKind === "resume" ? runningPhase === "expand" ? "核心定制建议已保存，正在补充细节" : "正在深度分析岗位定制简历" : runningKind === "interview" ? runningPhase === "expand" ? "核心面试问题已保存，正在扩展追问" : "正在深度分析面试追问地图" : "正在生成深度证据地图"}</strong><p>{runningKind === "resume" ? runningPhase === "expand" ? "正在避开重复内容，补充中低优先级要求和能力缺口；你已经可以查看第一批结果。" : "先深度判断最关键的简历取舍，再单独整理和校验来源 ID。" : runningKind === "interview" ? runningPhase === "expand" ? "正在补充不同考察角度；第一批高优先级问题已经可以查看。" : "先推理核心考察意图和问题链路，再单独整理和校验来源 ID。" : "正在拆解 JD、召回语义相近经历、组合多条证据并复核判断。"}</p><div className="loading-track"><span /></div></div></section>}
       {(!live || hasEvidence) && <>
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
-      {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制简历" body="基于证据地图逐条给出保留、改写、补充或弱化建议，不会虚构不存在的经历和指标。" action="生成定制建议" onAction={() => run("resume")} running={runningKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={runningKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={runningKind === "interview"} /> : <InterviewPanel />)}
+      {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制简历" body="只挑选少量真正值得调整的简历原文，根据 JD 做事实不变的针对性改写；没有改写空间时不会硬改。" action="生成定制建议" onAction={() => run("resume")} running={runningKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={runningKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={runningKind === "interview"} /> : <InterviewPanel />)}
       </>}
     </>
   );
@@ -633,10 +634,16 @@ function PendingAnalysisModule({ title, body, action, onAction, running = false 
   return <section className="card analysis-empty-card module-pending"><span><Sparkles size={23} /></span><h2>{title}</h2><p>{body}</p><button className="primary-button" type="button" onClick={() => void onAction()} disabled={running}>{running ? <><LoaderCircle className="state-spinner inline" size={14} />生成中</> : <><Sparkles size={14} />{action}</>}</button></section>;
 }
 
+function NoResumeChanges({ onRegenerate, running = false }: { onRegenerate: () => Promise<void>; running?: boolean }) {
+  return <section className="card analysis-empty-card module-pending"><span><ShieldCheck size={23} /></span><h2>没有值得硬改的内容</h2><p>当前证据没有支持可靠的针对性改写。系统已主动跳过可能夸大职责、添加新事实或重复套用 JD 的建议，保留母版原文更合适。</p><button className="secondary-button" type="button" onClick={() => void onRegenerate()} disabled={running}><RefreshCw size={14} />重新检查</button></section>;
+}
+
 function ResumeSuggestionsPanel({ items, onToggle, onRegenerate, running = false }: { items?: ResumeSuggestionRecord[]; onToggle?: (id: string, accepted: boolean) => Promise<void>; onRegenerate?: () => Promise<void>; running?: boolean }) {
   const [accepted, setAccepted] = useState<string[]>(items?.filter((item) => item.accepted).map((item) => item.id) ?? []);
   const [copied, setCopied] = useState("");
   const liveItems = items ?? suggestions.map((item, index) => ({ id: `demo-${index}`, action: item.action === "改写" ? "rewrite" as const : "add" as const, original_text: item.original, suggested_text: item.revised, reason: item.reason, risk: "面试时需能够解释改写后的每项事实。", accepted: false }));
+  const [selectedId, setSelectedId] = useState(liveItems[0]?.id ?? "");
+  const selected = liveItems.find((item) => item.id === selectedId) ?? liveItems[0];
   const actionLabel = { keep: "保留", rewrite: "改写", add: "补充", deemphasize: "弱化" } as const;
   const copy = async (item: ResumeSuggestionRecord) => {
     await navigator.clipboard.writeText(item.edited_text || item.suggested_text);
@@ -649,7 +656,7 @@ function ResumeSuggestionsPanel({ items, onToggle, onRegenerate, running = false
     try { await onToggle?.(item.id, next); }
     catch { setAccepted((current) => next ? current.filter((id) => id !== item.id) : [...current, item.id]); }
   };
-  return <div className="analysis-layout"><div className="analysis-list"><div className="truth-banner"><ShieldCheck size={18} /><span><strong>事实优先</strong>缺少指标时使用明确占位符，不会自动补写不存在的数据。</span>{onRegenerate && <button className="secondary-button compact" type="button" onClick={() => void onRegenerate()} disabled={running}><RefreshCw size={13} />重新生成</button>}</div>{liveItems.map((item) => <article className="card suggestion-card" key={item.id}><div className="suggestion-head"><span>{actionLabel[item.action]}</span><h2>{item.action === "add" ? "建议补充内容" : "简历表述建议"}</h2></div><div className="rewrite-grid"><div><small>母版原文</small><p>{item.original_text}</p></div><ArrowRight size={17} /><div className="revised"><small>建议版本</small><p>{item.edited_text || item.suggested_text}</p></div></div><div className="suggestion-reason"><Sparkles size={15} /><p>{item.reason}</p></div><div className="suggestion-risk"><AlertCircle size={14} /><p><strong>面试风险</strong>{item.risk}</p></div><div className="suggestion-actions"><button className="secondary-button compact" type="button" onClick={() => void copy(item)}><Copy size={14} />{copied === item.id ? "已复制" : "复制"}</button><button className={`primary-button compact ${accepted.includes(item.id) ? "accepted" : ""}`} type="button" onClick={() => void toggle(item)}>{accepted.includes(item.id) ? <><Check size={14} />已采纳</> : "采纳建议"}</button></div></article>)}</div><SourcePanel resumeQuote={liveItems[0]?.original_text ?? ""} /></div>;
+  return <div className="analysis-layout"><div className="analysis-list"><div className="truth-banner"><ShieldCheck size={18} /><span><strong>克制改写</strong>每条母版原文最多一条建议，只调整表达顺序和重点，不增加未经证明的职责、方法或结果。</span>{onRegenerate && <button className="secondary-button compact" type="button" onClick={() => void onRegenerate()} disabled={running}><RefreshCw size={13} />重新生成</button>}</div>{liveItems.map((item) => <article className={`card suggestion-card ${selected?.id === item.id ? "selected" : ""}`} key={item.id}><div className="suggestion-head"><span>{actionLabel[item.action]}</span><h2>{item.action === "add" ? "建议补充内容" : "针对性改写"}</h2></div><div className="rewrite-grid"><div><small>母版原文</small><p>{item.original_text}</p></div><ArrowRight size={17} /><div className="revised"><small>建议版本</small><p>{item.edited_text || item.suggested_text}</p></div></div><div className="suggestion-reason"><Sparkles size={15} /><p>{item.reason}</p></div><div className="suggestion-risk"><AlertCircle size={14} /><p><strong>面试风险</strong>{item.risk}</p></div><div className="suggestion-actions"><button className="text-button" type="button" onClick={() => setSelectedId(item.id)}>查看关联 JD <ArrowRight size={13} /></button><button className="secondary-button compact" type="button" onClick={() => void copy(item)}><Copy size={14} />{copied === item.id ? "已复制" : "复制"}</button><button className={`primary-button compact ${accepted.includes(item.id) ? "accepted" : ""}`} type="button" onClick={() => void toggle(item)}>{accepted.includes(item.id) ? <><Check size={14} />已采纳</> : "采纳建议"}</button></div></article>)}</div><SourcePanel jdQuote={selected?.jd_quotes?.[0] ?? ""} resumeQuote={selected?.original_text ?? ""} /></div>;
 }
 
 function InterviewPanel({ items, evidence: evidenceItems = [], onRegenerate, running = false }: { items?: InterviewQuestionRecord[]; evidence?: AnalysisEvidenceItem[]; onRegenerate?: () => Promise<void>; running?: boolean }) {
@@ -899,9 +906,11 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
       const applyPayload = (response: { data?: unknown }) => {
         const next = response.data as Partial<PositionAnalysisData>;
         setAnalysisData((current) => current ? { ...current, ...next, meta: next.meta ?? current.meta } : next as PositionAnalysisData);
+        return next;
       };
-      applyPayload(payload);
-      if (kind !== "evidence") {
+      const coreResult = applyPayload(payload);
+      const shouldExpand = kind === "interview" || (kind === "resume" && Boolean(coreResult.suggestions?.length));
+      if (kind !== "evidence" && shouldExpand) {
         setAnalysisRunningPhase("expand");
         try {
           const expanded = await authenticatedFetch(`/api/positions/${positionId}/${endpoint}`, { method: "POST", body: JSON.stringify({ force: hasCurrent, phase: "expand" }) });
