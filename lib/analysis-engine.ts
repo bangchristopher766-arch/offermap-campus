@@ -12,7 +12,7 @@ const roleRules: Record<PositionCategory, string> = {
 const outputInstructions = {
   evidence: `输出结构必须是：
 {"requirements":[{"id":"R1","type":"required|preferred|responsibility","requirement":"对要求的忠实概括","jdLineId":"J001","importance":"high|medium|low","status":"strong|partial|missing","resumeLineId":"CV001；missing 时必须为空字符串","rationale":"判断理由","action":"具体补强动作"}]}
-最多输出 12 条，合并语义重复的要求。所有高优先级要求必须出现。只能选择输入中真实存在的行号，禁止自己填写原文。`,
+最多输出 12 条，合并语义重复的要求。所有高优先级要求必须出现。只能选择输入中真实存在的行号，禁止推测连续编号或自己填写原文。找不到简历证据时 status 必须为 missing 且 resumeLineId 必须为空字符串。`,
   resume: `输出结构必须是：
 {"suggestions":[{"id":"S1","action":"keep|rewrite|add|deemphasize","original":"简历逐字引用","suggested":"建议版本","reason":"修改理由","risk":"可能引发的面试风险","requirementIds":["R1"],"sourceQuotes":["简历或 JD 的逐字引用"]}]}`,
   interview: `输出结构必须是：
@@ -62,7 +62,7 @@ export async function runAnalysis(input: { kind: AnalysisKind; category: Positio
   const jdSegments = sourceSegments(input.jd, "J");
   const resumeSegments = sourceSegments(input.resume, "CV");
   const material = input.kind === "evidence"
-    ? `<JD_LINES>\n${jdSegments.entries.map(([id, value]) => `${id}\t${value}`).join("\n")}\n</JD_LINES>\n<RESUME_LINES>\n${resumeSegments.entries.map(([id, value]) => `${id}\t${value}`).join("\n")}\n</RESUME_LINES>`
+    ? `<VALID_JD_LINE_IDS>${jdSegments.entries.map(([id]) => id).join(",")}</VALID_JD_LINE_IDS>\n<JD_LINES>\n${jdSegments.entries.map(([id, value]) => `${id}\t${value}`).join("\n")}\n</JD_LINES>\n<VALID_RESUME_LINE_IDS>${resumeSegments.entries.map(([id]) => id).join(",")}</VALID_RESUME_LINE_IDS>\n<RESUME_LINES>\n${resumeSegments.entries.map(([id, value]) => `${id}\t${value}`).join("\n")}\n</RESUME_LINES>`
     : `<JD>\n${input.jd}\n</JD>\n<RESUME>\n${input.resume}\n</RESUME>`;
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -84,23 +84,28 @@ export async function runAnalysis(input: { kind: AnalysisKind; category: Positio
       const modelJson = parseModelJson(result.content);
       const data = input.kind === "evidence" ? (() => {
         const selected = evidenceSelectionSchema.parse(modelJson);
-        return evidenceMapSchema.parse({ requirements: selected.requirements.map((item) => {
+        const requirements = selected.requirements.flatMap((item) => {
           const jdQuote = jdSegments.map.get(item.jdLineId);
           const resumeQuote = item.resumeLineId ? resumeSegments.map.get(item.resumeLineId) : "";
-          if (!jdQuote) throw new Error(`模型返回了不存在的 JD 行号：${item.jdLineId}`);
-          if (item.status !== "missing" && !resumeQuote) throw new Error(`模型返回了不存在的简历行号：${item.resumeLineId}`);
-          return {
+          if (!jdQuote) return [];
+
+          const hasVerifiedResumeEvidence = item.status !== "missing" && Boolean(resumeQuote);
+          return [{
             id: item.id,
             type: item.type,
             requirement: item.requirement,
             jdQuote,
             importance: item.importance,
-            status: item.status,
-            resumeQuote: item.status === "missing" ? "" : resumeQuote,
-            rationale: item.rationale,
+            status: hasVerifiedResumeEvidence ? item.status : "missing",
+            resumeQuote: hasVerifiedResumeEvidence ? resumeQuote : "",
+            rationale: hasVerifiedResumeEvidence
+              ? item.rationale
+              : "当前简历中未定位到可验证的直接证据，建议人工确认是否有相关经历可以补充。",
             action: item.action,
-          };
-        }) });
+          }];
+        });
+        if (!requirements.length) throw new Error("模型没有选择有效的 JD 行号");
+        return evidenceMapSchema.parse({ requirements });
       })() : schemaFor(input.kind).parse(modelJson);
       assertVerifiableQuotes(data, input.jd, input.resume);
       return { data, model: result.model, provider: result.provider, usage: result.usage };
