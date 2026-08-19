@@ -42,9 +42,11 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 ## 关键接口
 
 - `GET /api/resumes`：读取当前账号的全部简历版本与结构化解析结果。
-- `POST /api/resumes/parse`：使用带坐标的版面文本解析并保存不超过 10 MB 的文本型 PDF，生成新版本并将旧岗位分析标记为过期。
+- `POST /api/resumes/parse`：使用带坐标的版面文本解析并保存不超过 10 MB 的文本型 PDF；上传后会回读校验字节数，重复文件会修复旧存储对象而不是只更新文本。
 - `GET /api/resumes/:id/pdf`：在校验登录与文件归属后返回原始 PDF 字节，用于可靠的本地安全预览。
 - `POST /api/resumes/:id/reparse`：使用最新版解析器重新处理已保存的 PDF，无需重复上传。
+
+当配置 `DASHSCOPE_API_KEY` 时，复杂版式会额外使用千问进行“行号归类”：模型只能返回原文行 ID，无法改写或补充简历事实。未配置时自动使用本地版面解析器。
 - `POST /api/analyze`：生成证据地图、定制简历或面试地图；Zod 校验并验证原文引用。
 - `/api/companies`：读取与创建公司。
 - `/api/companies/:id`：修改或级联删除公司。

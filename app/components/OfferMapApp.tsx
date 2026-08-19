@@ -567,6 +567,10 @@ function UploadModal({ close, upload }: { close: () => void; upload: (file: File
     {error && <p className="form-error upload-error"><AlertCircle size={14} />{error}</p>}<div className="modal-note"><ShieldCheck size={17} /><p>PDF 会保存在你的私有空间，并生成解析文本与版本记录；预览链接仅短时间有效。</p></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close} disabled={saving}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving || !file}>{saving ? <><LoaderCircle className="state-spinner inline" size={14} />解析保存中</> : "开始解析并保存"}</button></div></section></div>;
 }
 
+function PdfPreviewModal({ preview, close }: { preview: { url: string; name: string }; close: () => void }) {
+  return <div className="pdf-preview-backdrop" role="presentation"><section className="pdf-preview-card" role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title"><header><div><span className="pdf-mini-icon"><FileText size={17} /></span><div><h2 id="pdf-preview-title">{preview.name}</h2><p>私有 PDF 预览</p></div></div><div><a className="secondary-button compact" href={preview.url} download={preview.name}>下载原文件</a><button className="icon-button" type="button" onClick={close} aria-label="关闭预览"><X size={19} /></button></div></header><iframe src={preview.url} title={`${preview.name} PDF 预览`} /></section></div>;
+}
+
 function StageModal({ position, close, update }: { position: DemoPosition; close: () => void; update: (input: StageUpdateInput) => Promise<void> }) {
   const [selected, setSelected] = useState<ApplicationStage>(position.stage);
   const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().slice(0, 10));
@@ -632,6 +636,7 @@ export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { i
   const [state, setState] = useState<DemoState>("normal");
   const [analysisTab, setAnalysisTab] = useState<AnalysisTab>("evidence");
   const [modal, setModal] = useState<"resume" | "position" | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; name: string } | null>(null);
   const configured = isSupabaseConfigured(supabaseConfig);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!configured);
@@ -722,32 +727,21 @@ export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { i
 
   const previewResume = async (resume: ResumeVersion) => {
     if (!session?.access_token) throw new Error("登录状态已失效，请重新登录");
-    const previewWindow = window.open("about:blank", "_blank");
-    if (previewWindow) {
-      previewWindow.opener = null;
-      previewWindow.document.title = "正在读取简历…";
-      previewWindow.document.body.innerHTML = '<p style="font:14px -apple-system,BlinkMacSystemFont,sans-serif;padding:32px;color:#666">正在安全读取 PDF…</p>';
+    const response = await fetch(`/api/resumes/${resume.id}/pdf`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error ?? "PDF 读取失败");
     }
-    try {
-      const response = await fetch(`/api/resumes/${resume.id}/pdf`, { headers: { Authorization: `Bearer ${session.access_token}` } });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({})) as { error?: string };
-        throw new Error(payload.error ?? "PDF 读取失败");
-      }
-      const bytes = await response.arrayBuffer();
-      const signature = new TextDecoder().decode(bytes.slice(0, 5));
-      if (signature !== "%PDF-") throw new Error("文件内容不是有效 PDF，请重新上传");
-      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-      if (previewWindow) previewWindow.location.replace(url);
-      else {
-        const link = document.createElement("a");
-        link.href = url; link.target = "_blank"; link.rel = "noreferrer"; link.click();
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
-    } catch (previewError) {
-      previewWindow?.close();
-      throw previewError;
-    }
+    const bytes = await response.arrayBuffer();
+    const signature = new TextDecoder().decode(bytes.slice(0, 5));
+    if (signature !== "%PDF-") throw new Error("文件内容不是有效 PDF，请重新上传");
+    if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
+    setPdfPreview({ url: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })), name: resume.name });
+  };
+
+  const closePdfPreview = () => {
+    if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
+    setPdfPreview(null);
   };
 
   const reparseResume = async (resumeId: string) => {
@@ -760,5 +754,5 @@ export function OfferMapApp({ initialView = "home", supabaseConfig = null }: { i
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main><StatusPreview view={initialView} state={state} onChange={setState} />{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}</div>;
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main><StatusPreview view={initialView} state={state} onChange={setState} />{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
 }

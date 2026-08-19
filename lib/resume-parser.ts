@@ -34,13 +34,14 @@ const SECTION_RULES: Array<{ title: string; aliases: string[] }> = [
   { title: "校园经历", aliases: ["校园经历", "学生工作", "社团经历", "校内经历", "社会实践"] },
   { title: "研究经历", aliases: ["研究经历", "科研经历", "论文与研究"] },
   { title: "获奖经历", aliases: ["获奖经历", "荣誉奖项", "奖项荣誉", "荣誉与奖励"] },
-  { title: "技能与证书", aliases: ["专业技能", "技能证书", "技能与证书", "语言能力", "其他技能", "技能", "证书"] },
+  { title: "技能与证书", aliases: ["专业技能", "个人技能", "技能证书", "技能与证书", "语言能力", "其他技能", "技能", "证书"] },
   { title: "个人信息", aliases: ["个人信息", "基本信息", "联系方式"] },
   { title: "自我评价", aliases: ["自我评价", "个人总结", "个人优势", "关于我"] },
 ];
 
 function cleanText(value: string) {
   return value
+    .normalize("NFKC")
     .replace(/[\t\u00a0]+/g, " ")
     .replace(/([\p{Script=Han}]{2,8})(?:\s*\1){1,}/gu, "$1")
     .replace(/\s{2,}/g, " ")
@@ -84,14 +85,17 @@ function groupPageLines(items: PositionedItem[]): LayoutLine[] {
     .filter((line) => line.text);
 }
 
-function headingAtStart(text: string) {
+function headingInLine(text: string) {
   const compact = text.replace(/[：:｜|·•\s]/g, "");
-  for (const rule of SECTION_RULES) {
-    const alias = rule.aliases.find((candidate) => compact.startsWith(candidate));
+  for (const rule of SECTION_RULES.map((item) => ({ ...item, aliases: [...item.aliases].sort((a, b) => b.length - a.length) }))) {
+    const alias = rule.aliases.find((candidate) => compact.startsWith(candidate) || (candidate.length >= 4 && compact.includes(candidate)));
     if (!alias) continue;
     const flexible = alias.split("").map((character) => `${character}\\s*`).join("");
-    const rest = cleanText(text.replace(new RegExp(`^[\\s|｜·•]*${flexible}[：:\\s|｜·•]*`), ""));
-    return { title: rule.title, rest };
+    const match = new RegExp(`${flexible}`).exec(text);
+    if (!match) continue;
+    const before = cleanText(text.slice(0, match.index));
+    const rest = cleanText(text.slice(match.index + match[0].length).replace(/^[：:\s|｜·•]+/, ""));
+    return { title: rule.title, before, rest };
   }
   return null;
 }
@@ -119,8 +123,9 @@ export async function parseResumePdf(bytes: Uint8Array) {
   sections.set(currentTitle, []);
 
   for (const line of allLines) {
-    const heading = headingAtStart(line.text);
+    const heading = headingInLine(line.text);
     if (heading) {
+      if (heading.before) sections.get(currentTitle)?.push(heading.before);
       currentTitle = heading.title;
       if (!sections.has(currentTitle)) sections.set(currentTitle, []);
       if (heading.rest) sections.get(currentTitle)?.push(heading.rest);
@@ -135,7 +140,7 @@ export async function parseResumePdf(bytes: Uint8Array) {
   const detectedSections = structuredSections.filter((section) => section.title !== "简历摘要").length;
   const warnings: string[] = [];
   if (detectedSections < 2) warnings.push("栏目标题识别较少，建议检查 PDF 是否为多栏或图片排版");
-  if (structuredSections.some((section) => section.items.length > 24)) warnings.push("部分栏目内容较长，可能存在栏目边界未识别");
+  if (detectedSections < 3 && structuredSections.some((section) => section.items.length > 24)) warnings.push("部分栏目内容较长，可能存在栏目边界未识别");
   if (allLines.length < 8) warnings.push("识别到的文本较少，请确认 PDF 不是扫描图片");
 
   return {

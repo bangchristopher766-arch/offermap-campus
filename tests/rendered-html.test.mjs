@@ -89,13 +89,15 @@ test("reads Supabase public configuration at server runtime", async () => {
 });
 
 test("implements private PDF resume versions", async () => {
-  const [component, listRoute, parseRoute, pdfRoute, reparseRoute, parser, migration] = await Promise.all([
+  const [component, listRoute, parseRoute, pdfRoute, reparseRoute, parser, aiParser, storage, migration] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/parse/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/[id]/pdf/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/[id]/reparse/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/resume-parser.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/resume-ai-parser.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase-storage.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/0003_resume_versions.sql", import.meta.url), "utf8"),
   ]);
   assert.match(component, /type="file"/);
@@ -108,6 +110,13 @@ test("implements private PDF resume versions", async () => {
   assert.match(reparseRoute, /parseResumePdf/);
   assert.match(parser, /extractTextItems/);
   assert.match(parser, /parser_version: 2/);
+  assert.match(parser, /normalize\("NFKC"\)/);
+  assert.match(parser, /个人技能/);
+  assert.match(aiParser, /lineIds/);
+  assert.match(aiParser, /DASHSCOPE_API_KEY/);
+  assert.match(storage, /verified\.byteLength !== bytes\.byteLength/);
+  assert.match(component, /PdfPreviewModal/);
+  assert.doesNotMatch(component, /window\.open/);
   assert.match(migration, /resume-pdfs/);
   assert.match(migration, /auth\.uid\(\)/);
   assert.match(migration, /public, file_size_limit/);

@@ -1,4 +1,5 @@
 import { createUserSupabase } from "@/lib/supabase";
+import { downloadPrivatePdf } from "@/lib/supabase-storage";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -10,7 +11,8 @@ function safeFilename(name: string) {
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = createUserSupabase(tokenFrom(request));
+    const accessToken = tokenFrom(request);
+    const supabase = createUserSupabase(accessToken);
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) return Response.json({ error: "请先登录" }, { status: 401 });
 
@@ -22,9 +24,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       .single();
     if (resumeError || !resume?.pdf_path) return Response.json({ error: "没有找到 PDF 文件" }, { status: 404 });
 
-    const { data: file, error: downloadError } = await supabase.storage.from("resume-pdfs").download(resume.pdf_path);
-    if (downloadError || !file) throw downloadError ?? new Error("PDF 下载失败");
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!accessToken) return Response.json({ error: "请先登录" }, { status: 401 });
+    const bytes = await downloadPrivatePdf(resume.pdf_path, accessToken);
     const signature = new TextDecoder().decode(bytes.slice(0, 5));
     if (signature !== "%PDF-") return Response.json({ error: "保存的文件不是有效 PDF，请重新上传" }, { status: 422 });
 

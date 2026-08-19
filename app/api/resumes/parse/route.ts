@@ -1,5 +1,7 @@
 import { createUserSupabase } from "@/lib/supabase";
 import { parseResumePdf } from "@/lib/resume-parser";
+import { enhanceResumeStructure } from "@/lib/resume-ai-parser";
+import { uploadPrivatePdf } from "@/lib/supabase-storage";
 
 export const runtime = "edge";
 
@@ -13,7 +15,8 @@ async function sha256(bytes: Uint8Array) {
 }
 
 export async function POST(request: Request) {
-  const supabase = createUserSupabase(tokenFrom(request));
+  const accessToken = tokenFrom(request);
+  const supabase = createUserSupabase(accessToken);
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) return Response.json({ error: "请先登录" }, { status: 401 });
 
@@ -29,6 +32,7 @@ export async function POST(request: Request) {
     const result = await parseResumePdf(bytes);
     const text = result.text.split(String.fromCharCode(0)).join("").trim();
     if (text.length < 80) return Response.json({ error: "没有识别到足够文字，暂不支持扫描版 PDF" }, { status: 422 });
+    const structuredContent = await enhanceResumeStructure(text, result.structuredContent);
 
     const contentHash = await sha256(bytes);
     const { data: duplicate } = await supabase
@@ -37,9 +41,12 @@ export async function POST(request: Request) {
       .eq("content_hash", contentHash)
       .maybeSingle();
     if (duplicate) {
+      if (!accessToken) return Response.json({ error: "请先登录" }, { status: 401 });
+      const duplicatePath = duplicate.pdf_path || `${user.user.id}/${duplicate.id}/resume.pdf`;
+      await uploadPrivatePdf(duplicatePath, bytes, accessToken, true);
       const { data: refreshed, error: refreshError } = await supabase
         .from("resumes")
-        .update({ parsed_text: text, page_count: result.totalPages, structured_content: result.structuredContent, updated_at: new Date().toISOString() })
+        .update({ name: file.name.slice(0, 240), parsed_text: text, pdf_path: duplicatePath, file_size: bytes.byteLength, page_count: result.totalPages, structured_content: structuredContent, updated_at: new Date().toISOString() })
         .eq("id", duplicate.id)
         .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
         .single();
@@ -58,10 +65,8 @@ export async function POST(request: Request) {
     const resumeId = crypto.randomUUID();
     const version = (latest?.version ?? 0) + 1;
     uploadedPath = `${user.user.id}/${resumeId}/resume.pdf`;
-    const { error: uploadError } = await supabase.storage
-      .from("resume-pdfs")
-      .upload(uploadedPath, bytes, { contentType: "application/pdf", upsert: false });
-    if (uploadError) throw uploadError;
+    if (!accessToken) return Response.json({ error: "请先登录" }, { status: 401 });
+    await uploadPrivatePdf(uploadedPath, bytes, accessToken, false);
 
     const { data: resume, error: insertError } = await supabase
       .from("resumes")
@@ -75,7 +80,7 @@ export async function POST(request: Request) {
         pdf_path: uploadedPath,
         file_size: file.size,
         page_count: result.totalPages,
-        structured_content: result.structuredContent,
+        structured_content: structuredContent,
       })
       .select("id,name,version,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
       .single();
@@ -89,6 +94,7 @@ export async function POST(request: Request) {
     if (uploadedPath) await supabase.storage.from("resume-pdfs").remove([uploadedPath]);
     const message = error instanceof Error ? error.message : "PDF 解析失败";
     const migrationMissing = /pdf_path|structured_content|resume-pdfs|bucket/i.test(message);
-    return Response.json({ error: migrationMissing ? "简历存储尚未初始化，请先执行最新数据库迁移" : "PDF 解析失败，请确认文件不是扫描件或加密文件", details: message }, { status: migrationMissing ? 503 : 422 });
+    const storageFailure = /上传|存储|线上 PDF|校验失败/i.test(message);
+    return Response.json({ error: migrationMissing ? "简历存储尚未初始化，请先执行最新数据库迁移" : storageFailure ? message : "PDF 解析失败，请确认文件不是扫描件或加密文件", details: message }, { status: migrationMissing || storageFailure ? 503 : 422 });
   }
 }
