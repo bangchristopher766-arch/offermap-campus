@@ -4,7 +4,7 @@ import { runAnalysis } from "@/lib/analysis-engine";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "evidence-v3-safe-line-ids";
+const PROMPT_VERSION = "evidence-v4-semantic-multi-evidence";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -66,7 +66,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const position = await loadPosition(supabase, positionId);
     if (!position) return Response.json({ error: "岗位不存在或你无权分析" }, { status: 404 });
 
-    let resumeQuery = supabase.from("resumes").select("id,name,version,parsed_text,content_hash");
+    let resumeQuery = supabase.from("resumes").select("id,name,version,parsed_text,structured_content,content_hash");
     resumeQuery = position.resume_id ? resumeQuery.eq("id", position.resume_id) : resumeQuery.order("version", { ascending: false }).limit(1);
     const { data: resume, error: resumeError } = await resumeQuery.maybeSingle();
     if (resumeError) throw resumeError;
@@ -93,7 +93,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     runId = run.id;
     await supabase.from("positions").update({ analysis_status: "processing", resume_id: resume.id, updated_at: new Date().toISOString() }).eq("id", positionId);
 
-    const result = await runAnalysis({ kind: "evidence", category, jd: position.jd_text, resume: resume.parsed_text });
+    const result = await runAnalysis({ kind: "evidence", category, jd: position.jd_text, resume: resume.parsed_text, structuredResume: resume.structured_content });
     const validated = evidenceMapSchema.parse(result.data);
 
     const oldEvidenceIds = currentEvidence.flatMap((item) => {
@@ -118,27 +118,37 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       }).select("id").single();
       if (requirementError) throw requirementError;
 
-      let evidenceId: string | null = null;
-      if (item.resumeQuote) {
+      const resumeQuotes = item.resumeQuotes.length ? item.resumeQuotes : item.resumeQuote ? [item.resumeQuote] : [];
+      if (!resumeQuotes.length) {
+        const { error: relationError } = await supabase.from("requirement_evidence").insert({
+          user_id: user.user.id,
+          requirement_id: requirement.id,
+          evidence_id: null,
+          status: item.status,
+          rationale: item.rationale,
+          action: item.action,
+        });
+        if (relationError) throw relationError;
+      }
+
+      for (const resumeQuote of resumeQuotes) {
         const { data: evidence, error: evidenceError } = await supabase.from("evidence_items").insert({
           user_id: user.user.id,
           resume_id: resume.id,
           title: item.requirement,
-          resume_quote: item.resumeQuote,
+          resume_quote: resumeQuote,
         }).select("id").single();
         if (evidenceError) throw evidenceError;
-        evidenceId = evidence.id;
+        const { error: relationError } = await supabase.from("requirement_evidence").insert({
+          user_id: user.user.id,
+          requirement_id: requirement.id,
+          evidence_id: evidence.id,
+          status: item.status,
+          rationale: item.rationale,
+          action: item.action,
+        });
+        if (relationError) throw relationError;
       }
-
-      const { error: relationError } = await supabase.from("requirement_evidence").insert({
-        user_id: user.user.id,
-        requirement_id: requirement.id,
-        evidence_id: evidenceId,
-        status: item.status,
-        rationale: item.rationale,
-        action: item.action,
-      });
-      if (relationError) throw relationError;
     }
 
     const durationMs = Date.now() - startedAt;

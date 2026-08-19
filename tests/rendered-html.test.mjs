@@ -37,18 +37,20 @@ test("renders the independent OfferMap workspace routes", async () => {
   assert.doesNotMatch(home, /codex-preview|Your site is taking shape|react-loading-skeleton/);
 });
 
-test("ships the four fixed position categories and verification guardrails", async () => {
-  const [component, schema, route] = await Promise.all([
+test("ships the four fixed position categories and semantic verification guardrails", async () => {
+  const [component, schema, engine] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/analysis-schema.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/analyze/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/analysis-engine.ts", import.meta.url), "utf8"),
   ]);
   for (const [uiCategory, schemaCategory] of [["技术", "technology"], ["产品", "product"], ["运营", "operations"], ["市场", "marketing"]]) {
     assert.match(component, new RegExp(uiCategory));
     assert.match(schema, new RegExp(schemaCategory));
   }
-  assert.match(route, /assertVerifiableQuotes/);
-  assert.match(route, /禁止编造/);
+  assert.match(engine, /assertVerifiableQuotes/);
+  assert.match(engine, /不得编造/);
+  assert.match(engine, /candidateResumeLineIds/);
+  assert.match(engine, /resumeLineIds/);
 });
 
 test("includes a bespoke social preview and removes starter assets", async () => {
@@ -89,7 +91,7 @@ test("reads Supabase public configuration at server runtime", async () => {
 });
 
 test("implements private PDF resume versions", async () => {
-  const [component, listRoute, parseRoute, pdfRoute, reparseRoute, parser, aiParser, storage, migration] = await Promise.all([
+  const [component, listRoute, parseRoute, pdfRoute, reparseRoute, parser, aiParser, aiClient, storage, migration] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/parse/route.ts", import.meta.url), "utf8"),
@@ -97,6 +99,7 @@ test("implements private PDF resume versions", async () => {
     readFile(new URL("../app/api/resumes/[id]/reparse/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/resume-parser.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/resume-ai-parser.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/ai-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase-storage.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/0003_resume_versions.sql", import.meta.url), "utf8"),
   ]);
@@ -115,7 +118,7 @@ test("implements private PDF resume versions", async () => {
   assert.match(parser, /normalize\("NFKC"\)/);
   assert.match(parser, /个人技能/);
   assert.match(aiParser, /lineIds/);
-  assert.match(aiParser, /DASHSCOPE_API_KEY/);
+  assert.match(aiClient, /DASHSCOPE_API_KEY/);
   assert.match(storage, /verified\.byteLength !== bytes\.byteLength/);
   assert.match(component, /PdfPreviewModal/);
   assert.doesNotMatch(component, /window\.open/);

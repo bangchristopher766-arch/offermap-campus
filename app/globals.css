@@ -409,6 +409,8 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .evidence-status.partial { color: #8a5800; background: #fff4d8; }
 .evidence-status.missing { color: #b33730; background: #ffebe9; }
 .evidence-card blockquote { margin: 16px 0 0; padding: 13px 15px; border-left: 3px solid var(--blue); border-radius: 0 12px 12px 0; color: #515154; background: var(--soft); font-size: 13px; line-height: 1.6; }
+.evidence-quotes blockquote + blockquote { margin-top: 8px; }
+.evidence-quotes blockquote small { display: block; margin-bottom: 4px; color: var(--blue); font-size: 9px; font-weight: 650; letter-spacing: .04em; }
 .evidence-card > p { margin: 14px 0 4px; color: var(--secondary); font-size: 12px; line-height: 1.58; }
 .evidence-action { margin-top: 13px; padding: 12px 13px; border-radius: 12px; color: #765f32; background: #fff9ea; }
 .evidence-action strong { display: block; font-size: 10px; font-weight: 600; }
@@ -421,6 +423,7 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .source-panel section { margin-top: 18px; padding-top: 17px; border-top: 1px solid var(--line); }
 .source-panel section > strong { display: block; margin-bottom: 9px; font-size: 11px; font-weight: 600; }
 .source-panel section p { margin: 0; color: var(--secondary); font-size: 11px; line-height: 1.65; }
+.source-panel section p + p { margin-top: 8px; }
 .source-panel mark { padding: 1px 2px; border-radius: 3px; color: inherit; background: #fff0ad; }
 .source-panel > .text-button { margin-top: 13px; }
 .truth-banner { display: flex; align-items: center; gap: 10px; padding: 15px 17px; border: 1px solid #dcebe2; border-radius: 16px; color: #287450; background: #f0f8f3; }

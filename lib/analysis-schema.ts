@@ -12,6 +12,7 @@ export const evidenceMapSchema = z.object({
     importance: z.enum(["high", "medium", "low"]),
     status: z.enum(["strong", "partial", "missing"]),
     resumeQuote: z.string(),
+    resumeQuotes: z.array(z.string()).max(4).default([]),
     rationale: z.string().min(1),
     action: z.string().min(1),
   })).min(1).max(20),

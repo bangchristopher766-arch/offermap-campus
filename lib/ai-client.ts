@@ -15,6 +15,10 @@ type JsonModelOptions = {
   messages: AiMessage[];
   temperature?: number;
   timeoutMs?: number;
+  model?: string;
+  maxTokens?: number;
+  thinking?: boolean;
+  reasoningEffort?: "low" | "high" | "max";
 };
 
 type JsonModelResult = {
@@ -30,7 +34,7 @@ const providerDefaults: Record<AiProvider, { model: string; endpoint: string }> 
     endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   },
   deepseek: {
-    model: "deepseek-v4-flash",
+    model: "deepseek-v4-pro",
     endpoint: "https://api.deepseek.com/chat/completions",
   },
   dashscope: {
@@ -69,7 +73,7 @@ export function isAiConfigured() {
   return Boolean(getAiConfiguration().apiKey);
 }
 
-export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 45_000 }: JsonModelOptions): Promise<JsonModelResult> {
+export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 45_000, model, maxTokens = 6_000, thinking = false, reasoningEffort = "high" }: JsonModelOptions): Promise<JsonModelResult> {
   const configuration = getAiConfiguration();
   if (!configuration.apiKey) throw new Error("AI 服务尚未配置");
 
@@ -87,10 +91,15 @@ export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 4
         },
         signal: controller.signal,
         body: JSON.stringify({
-          model: configuration.model,
+          model: model || configuration.model,
           temperature: configuration.provider === "zhipu" && temperature === 0 ? 0.01 : temperature,
+          max_tokens: maxTokens,
           response_format: { type: "json_object" },
           messages,
+          ...(configuration.provider === "deepseek" ? {
+            thinking: { type: thinking ? "enabled" : "disabled" },
+            reasoning_effort: reasoningEffort,
+          } : {}),
         }),
       });
       if (response.ok || response.status !== 429 || attempt === 2) break;
@@ -112,7 +121,7 @@ export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 4
 
     return {
       content,
-      model: configuration.model,
+      model: model || configuration.model,
       provider: configuration.provider,
       usage: payload.usage,
     };
