@@ -1,5 +1,5 @@
 import { evidenceMapSchema, positionCategorySchema } from "@/lib/analysis-schema";
-import { isAiConfigured } from "@/lib/ai-client";
+import { getAiConfiguration, isAiConfigured } from "@/lib/ai-client";
 import { runAnalysis } from "@/lib/analysis-engine";
 import { createUserSupabase } from "@/lib/supabase";
 
@@ -73,7 +73,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!resume?.parsed_text || resume.parsed_text.trim().length < 80) return Response.json({ error: "请先上传并成功解析一份母版简历", code: "RESUME_REQUIRED" }, { status: 409 });
 
     const category = positionCategorySchema.parse(position.category);
-    const inputHash = await sha256(`${PROMPT_VERSION}\n${resume.content_hash}\n${position.jd_text}`);
+    const aiConfiguration = getAiConfiguration();
+    const inputHash = await sha256(`${PROMPT_VERSION}\n${aiConfiguration.provider}\n${aiConfiguration.model}\n${resume.content_hash}\n${position.jd_text}`);
     const { data: cachedRun } = await supabase.from("ai_runs").select("id,model,duration_ms").eq("position_id", positionId).eq("task", "evidence").eq("input_hash", inputHash).eq("status", "ready").maybeSingle();
     const currentEvidence = await loadEvidence(supabase, positionId);
     if (cachedRun && currentEvidence.length && !body.force) {
@@ -84,7 +85,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       user_id: user.user.id,
       position_id: positionId,
       task: "evidence",
-      model: process.env.AI_MODEL || "glm-4.5-flash",
+      model: aiConfiguration.model,
       prompt_version: PROMPT_VERSION,
       input_hash: inputHash,
       status: "processing",
