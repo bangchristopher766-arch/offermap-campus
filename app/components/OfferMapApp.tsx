@@ -41,6 +41,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 export type OfferMapView = "home" | "resume" | "positions" | "map" | "analysis";
 type DemoState = "normal" | "empty" | "loading" | "error";
 type AnalysisTab = "evidence" | "resume" | "interview";
+type AnalysisRunPhase = "deep" | "expand" | null;
 type Category = "技术" | "产品" | "运营" | "市场";
 type ApplicationStage = "感兴趣" | "准备中" | "已投递" | "笔试中" | "一面中" | "二面中" | "终面中" | "Offer 沟通" | "已录用" | "未通过" | "已放弃";
 type DemoPosition = { id: string; title: string; location: string; stage: ApplicationStage; analysis: string; next?: string; href: string };
@@ -113,7 +114,7 @@ type PositionAnalysisData = {
   evidence: AnalysisEvidenceItem[];
   suggestions: ResumeSuggestionRecord[];
   questions: InterviewQuestionRecord[];
-  meta?: { model?: string; provider?: string; durationMs?: number };
+  meta?: { model?: string; provider?: string; durationMs?: number; phase?: "core" | "expand" };
 };
 
 const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
@@ -565,7 +566,7 @@ function MapCompany({ className, mark, name, subtitle, tags, stage, status, tone
   return <a href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><em className={`application-stage ${stageTone(stage)}`}>{stage}</em><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></a>;
 }
 
-function AnalysisView({ tab, setTab, data, loading, runningKind, error, run, toggleSuggestion, live }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void; data: PositionAnalysisData | null; loading: boolean; runningKind: AnalysisTab | null; error: string; run: (kind: AnalysisTab) => Promise<void>; toggleSuggestion: (id: string, accepted: boolean) => Promise<void>; live: boolean }) {
+function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, error, run, toggleSuggestion, live }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void; data: PositionAnalysisData | null; loading: boolean; runningKind: AnalysisTab | null; runningPhase: AnalysisRunPhase; error: string; run: (kind: AnalysisTab) => Promise<void>; toggleSuggestion: (id: string, accepted: boolean) => Promise<void>; live: boolean }) {
   const position = data?.position;
   const companyRelation = position?.companies;
   const companyName = Array.isArray(companyRelation) ? companyRelation[0]?.name : companyRelation?.name;
@@ -584,7 +585,7 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, error, run, tog
       {error && <section className="analysis-inline-error"><AlertCircle size={16} /><span>{error}</span>{position && !running && <button type="button" onClick={() => void run(tab)}>重试分析</button>}</section>}
       {position && <section className="card application-progress"><div className="progress-heading"><div><span>求职进度</span><strong>{nextEvent && !Number.isNaN(nextEvent.getTime()) ? `下一安排：${nextEvent.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}${application?.next_event_type ? ` · ${application.next_event_type}` : ""}` : "还没有设置下一安排"}</strong></div><span className={`application-stage ${stageTone(stage)}`}>{stage}</span></div><div className={`analysis-run-note ${position.analysis_status}`}><Sparkles size={14} /><span><strong>分析状态：</strong>{running || position.analysis_status === "processing" ? "AI 正在拆解能力要求、召回候选经历并进行深度判断。" : position.analysis_status === "ready" ? `${modelLabel} 证据地图已保存${position.analyzed_resume_version ? `，对应母版简历 v${position.analyzed_resume_version}` : ""}。` : position.analysis_status === "stale" ? "简历或 JD 已更新，需要重新生成证据地图。" : position.analysis_status === "failed" ? "上次分析没有通过校验，可以重新生成。" : "尚未生成证据地图。"}</span></div></section>}
       {live && position && !loading && !hasEvidence && !running && <section className="card analysis-empty-card"><span><WandSparkles size={25} /></span><h2>开始串联这份 JD 与母版简历</h2><p>AI 会按语义理解岗位能力与真实经历，允许跨措辞和多条证据组合；所有引用仍会在保存前校验。</p><button className="primary-button" type="button" onClick={() => void run("evidence")}><Sparkles size={15} />开始深度分析</button></section>}
-      {running && <section className="card analysis-running-card"><div className="analysis-running-icon"><LoaderCircle className="state-spinner" size={24} /></div><div><strong>{runningKind === "resume" ? "正在生成岗位定制简历" : runningKind === "interview" ? "正在生成面试追问地图" : "正在生成深度证据地图"}</strong><p>{runningKind === "resume" ? "正在基于已验证证据逐条判断保留、改写和补充内容。" : runningKind === "interview" ? "正在从核心要求、突出经历与能力缺口生成递进问题。" : "正在拆解 JD、召回语义相近经历、组合多条证据并复核判断。"}通常需要 30–90 秒。</p><div className="loading-track"><span /></div></div></section>}
+      {running && <section className="card analysis-running-card"><div className="analysis-running-icon"><LoaderCircle className="state-spinner" size={24} /></div><div><strong>{runningKind === "resume" ? runningPhase === "expand" ? "核心定制建议已保存，正在补充细节" : "正在深度分析岗位定制简历" : runningKind === "interview" ? runningPhase === "expand" ? "核心面试问题已保存，正在扩展追问" : "正在深度分析面试追问地图" : "正在生成深度证据地图"}</strong><p>{runningKind === "resume" ? runningPhase === "expand" ? "正在避开重复内容，补充中低优先级要求和能力缺口；你已经可以查看第一批结果。" : "先深度判断最关键的简历取舍，再单独整理和校验来源 ID。" : runningKind === "interview" ? runningPhase === "expand" ? "正在补充不同考察角度；第一批高优先级问题已经可以查看。" : "先推理核心考察意图和问题链路，再单独整理和校验来源 ID。" : "正在拆解 JD、召回语义相近经历、组合多条证据并复核判断。"}</p><div className="loading-track"><span /></div></div></section>}
       {(!live || hasEvidence) && <>
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
       {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制简历" body="基于证据地图逐条给出保留、改写、补充或弱化建议，不会虚构不存在的经历和指标。" action="生成定制建议" onAction={() => run("resume")} running={runningKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={runningKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={runningKind === "interview"} /> : <InterviewPanel />)}
@@ -776,6 +777,7 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   const [analysisData, setAnalysisData] = useState<PositionAnalysisData | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(initialView === "analysis" && configured);
   const [analysisRunningKind, setAnalysisRunningKind] = useState<AnalysisTab | null>(null);
+  const [analysisRunningPhase, setAnalysisRunningPhase] = useState<AnalysisRunPhase>(null);
   const [analysisError, setAnalysisError] = useState("");
 
   const authenticatedFetch = async (path: string, init?: RequestInit) => {
@@ -889,13 +891,25 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
 
   const runPositionAnalysis = async (kind: AnalysisTab) => {
     if (!positionId) return;
-    setAnalysisRunningKind(kind); setAnalysisTab(kind); setAnalysisError("");
+    setAnalysisRunningKind(kind); setAnalysisRunningPhase(kind === "evidence" ? null : "deep"); setAnalysisTab(kind); setAnalysisError("");
     try {
       const endpoint = kind === "evidence" ? "analysis" : kind === "resume" ? "resume-suggestions" : "interview-map";
       const hasCurrent = kind === "evidence" ? Boolean(analysisData?.evidence.length) : kind === "resume" ? Boolean(analysisData?.suggestions.length) : Boolean(analysisData?.questions.length);
-      const payload = await authenticatedFetch(`/api/positions/${positionId}/${endpoint}`, { method: "POST", body: JSON.stringify({ force: hasCurrent }) });
-      const next = payload.data as Partial<PositionAnalysisData>;
-      setAnalysisData((current) => current ? { ...current, ...next, meta: next.meta ?? current.meta } : next as PositionAnalysisData);
+      const payload = await authenticatedFetch(`/api/positions/${positionId}/${endpoint}`, { method: "POST", body: JSON.stringify(kind === "evidence" ? { force: hasCurrent } : { force: hasCurrent, phase: "core" }) });
+      const applyPayload = (response: { data?: unknown }) => {
+        const next = response.data as Partial<PositionAnalysisData>;
+        setAnalysisData((current) => current ? { ...current, ...next, meta: next.meta ?? current.meta } : next as PositionAnalysisData);
+      };
+      applyPayload(payload);
+      if (kind !== "evidence") {
+        setAnalysisRunningPhase("expand");
+        try {
+          const expanded = await authenticatedFetch(`/api/positions/${positionId}/${endpoint}`, { method: "POST", body: JSON.stringify({ force: hasCurrent, phase: "expand" }) });
+          applyPayload(expanded);
+        } catch (expandError) {
+          setAnalysisError(`核心结果已生成，补充批次暂未完成：${expandError instanceof Error ? expandError.message : "可以稍后重新生成"}`);
+        }
+      }
       await loadWorkspace();
     } catch (runError) {
       setAnalysisError(runError instanceof Error ? runError.message : "分析失败，请重试");
@@ -905,7 +919,7 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
           setAnalysisData(payload.data as PositionAnalysisData);
         } catch { setAnalysisData(null); }
       }
-    } finally { setAnalysisRunningKind(null); }
+    } finally { setAnalysisRunningKind(null); setAnalysisRunningPhase(null); }
   };
 
   const toggleResumeSuggestion = async (id: string, accepted: boolean) => {
@@ -919,5 +933,5 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
 }

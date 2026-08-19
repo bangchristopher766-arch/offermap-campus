@@ -4,7 +4,7 @@ import { runAnalysis } from "@/lib/analysis-engine";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "interview-v1-evidence-grounded";
+const PROMPT_VERSION = "interview-v2-two-stage-batched";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -46,7 +46,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) return Response.json({ error: "请先登录" }, { status: 401 });
     const { id: positionId } = await context.params;
-    const body = await request.json().catch(() => ({})) as { force?: boolean };
+    const body = await request.json().catch(() => ({})) as { force?: boolean; phase?: "core" | "expand" };
+    const phase = body.phase === "expand" ? "expand" : "core";
 
     const { data: position, error: positionError } = await supabase.from("positions")
       .select("id,category,jd_text,resume_id").eq("id", positionId).maybeSingle();
@@ -63,15 +64,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!evidence.length) return Response.json({ error: "请先生成证据地图，再生成面试追问地图" }, { status: 409 });
     const analysisContext = JSON.stringify(evidence);
     const ai = getAiConfiguration();
-    const inputHash = await sha256(`${PROMPT_VERSION}\n${ai.provider}\n${ai.model}\n${resume.content_hash}\n${position.jd_text}\n${analysisContext}`);
     const current = await loadQuestions(supabase, positionId);
+    const existingContext = phase === "expand" ? JSON.stringify(current.map((item) => ({ priority: item.priority, mainQuestion: item.main_question }))) : "";
+    const inputHash = await sha256(`${PROMPT_VERSION}\n${phase}\n${ai.provider}\n${ai.model}\n${resume.content_hash}\n${position.jd_text}\n${analysisContext}\n${existingContext}`);
+    const task = `interview-${phase}`;
     const { data: cachedRun } = await supabase.from("ai_runs").select("id,model,duration_ms")
-      .eq("position_id", positionId).eq("task", "interview").eq("input_hash", inputHash).eq("status", "ready").maybeSingle();
+      .eq("position_id", positionId).eq("task", task).eq("input_hash", inputHash).eq("status", "ready").maybeSingle();
     if (cachedRun && current.length && !body.force) return Response.json({ data: { questions: current, meta: { model: cachedRun.model, cached: true } } });
     if (cachedRun) await supabase.from("ai_runs").delete().eq("id", cachedRun.id);
 
     const { data: run, error: runError } = await supabase.from("ai_runs").insert({
-      user_id: user.user.id, position_id: positionId, task: "interview", model: ai.model,
+      user_id: user.user.id, position_id: positionId, task, model: ai.model,
       prompt_version: PROMPT_VERSION, input_hash: inputHash, status: "processing",
     }).select("id").single();
     if (runError) throw runError;
@@ -79,7 +82,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const result = await runAnalysis({
       kind: "interview", category: positionCategorySchema.parse(position.category),
-      jd: position.jd_text, resume: resume.parsed_text, analysisContext,
+      jd: position.jd_text, resume: resume.parsed_text, analysisContext, existingContext, phase,
     });
     const validated = interviewMapSchema.parse(result.data);
     const validRequirementIds = new Set(evidence.map((item) => item.id));
@@ -91,10 +94,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       });
     }));
 
-    const { error: deleteError } = await supabase.from("interview_questions").delete().eq("position_id", positionId);
-    if (deleteError) throw deleteError;
+    if (phase === "core") {
+      const { error: deleteError } = await supabase.from("interview_questions").delete().eq("position_id", positionId);
+      if (deleteError) throw deleteError;
+    }
     let insertedQuestions = 0;
     for (const item of validated.questions) {
+      if (phase === "expand" && current.some((saved) => saved.main_question.trim() === item.mainQuestion.trim())) continue;
       let requirementIds = item.requirementIds.filter((id) => validRequirementIds.has(id));
       if (!requirementIds.length) {
         requirementIds = evidence.filter((requirement) => item.jdQuotes.includes(requirement.jd_quote)).map((requirement) => requirement.id).slice(0, 4);
@@ -133,14 +139,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (followupError) throw followupError;
       insertedQuestions += 1;
     }
-    if (!insertedQuestions) throw new Error("模型没有返回可关联到证据地图的面试问题");
+    if (!insertedQuestions && phase === "core") throw new Error("模型没有返回可关联到证据地图的面试问题");
 
     const durationMs = Date.now() - startedAt;
     await supabase.from("ai_runs").update({
       status: "ready", model: result.model, duration_ms: durationMs,
       input_tokens: result.usage?.prompt_tokens ?? null, output_tokens: result.usage?.completion_tokens ?? null,
     }).eq("id", runId);
-    return Response.json({ data: { questions: await loadQuestions(supabase, positionId), meta: { model: result.model, provider: result.provider, durationMs } } });
+    return Response.json({ data: { questions: await loadQuestions(supabase, positionId), meta: { model: result.model, provider: result.provider, durationMs, phase } } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "面试追问地图生成失败";
     try {

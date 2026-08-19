@@ -19,6 +19,7 @@ type JsonModelOptions = {
   maxTokens?: number;
   thinking?: boolean;
   reasoningEffort?: "low" | "high" | "max";
+  jsonMode?: boolean;
 };
 
 type JsonModelResult = {
@@ -26,6 +27,7 @@ type JsonModelResult = {
   model: string;
   provider: AiProvider;
   usage?: ModelUsage;
+  finishReason?: string | null;
 };
 
 const providerDefaults: Record<AiProvider, { model: string; endpoint: string }> = {
@@ -73,7 +75,7 @@ export function isAiConfigured() {
   return Boolean(getAiConfiguration().apiKey);
 }
 
-export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 45_000, model, maxTokens = 6_000, thinking = false, reasoningEffort = "high" }: JsonModelOptions): Promise<JsonModelResult> {
+async function callModel({ messages, temperature = 0.1, timeoutMs = 45_000, model, maxTokens = 6_000, thinking = false, reasoningEffort = "high", jsonMode = true }: JsonModelOptions): Promise<JsonModelResult> {
   const configuration = getAiConfiguration();
   if (!configuration.apiKey) throw new Error("AI 服务尚未配置");
 
@@ -94,7 +96,7 @@ export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 4
           model: model || configuration.model,
           temperature: configuration.provider === "zhipu" && temperature === 0 ? 0.01 : temperature,
           max_tokens: maxTokens,
-          response_format: { type: "json_object" },
+          ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
           messages,
           ...(configuration.provider === "deepseek" ? {
             thinking: { type: thinking ? "enabled" : "disabled" },
@@ -113,21 +115,34 @@ export async function callJsonModel({ messages, temperature = 0.1, timeoutMs = 4
     }
 
     const payload = await response.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ finish_reason?: string | null; message?: { content?: string | null; reasoning_content?: string | null } }>;
       usage?: ModelUsage;
     };
     const content = payload.choices?.[0]?.message?.content;
-    if (!content) throw new Error("模型没有返回内容");
+    const finishReason = payload.choices?.[0]?.finish_reason ?? null;
+    if (!content?.trim()) {
+      const suffix = finishReason ? `（结束原因：${finishReason}）` : "";
+      throw new Error(`模型没有返回最终内容${suffix}`);
+    }
 
     return {
       content,
       model: model || configuration.model,
       provider: configuration.provider,
       usage: payload.usage,
+      finishReason,
     };
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function callJsonModel(options: JsonModelOptions) {
+  return callModel({ ...options, jsonMode: options.jsonMode ?? true });
+}
+
+export async function callTextModel(options: JsonModelOptions) {
+  return callModel({ ...options, jsonMode: false });
 }
 
 export function parseModelJson(content: string): unknown {

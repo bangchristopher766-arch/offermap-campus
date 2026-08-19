@@ -4,7 +4,7 @@ import { runAnalysis } from "@/lib/analysis-engine";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "resume-v1-evidence-grounded";
+const PROMPT_VERSION = "resume-v2-two-stage-batched";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -41,7 +41,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) return Response.json({ error: "请先登录" }, { status: 401 });
     const { id: positionId } = await context.params;
-    const body = await request.json().catch(() => ({})) as { force?: boolean };
+    const body = await request.json().catch(() => ({})) as { force?: boolean; phase?: "core" | "expand" };
+    const phase = body.phase === "expand" ? "expand" : "core";
 
     const { data: position, error: positionError } = await supabase.from("positions")
       .select("id,category,jd_text,resume_id").eq("id", positionId).maybeSingle();
@@ -58,15 +59,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!evidence.length) return Response.json({ error: "请先生成证据地图，再生成定制简历" }, { status: 409 });
     const analysisContext = JSON.stringify(evidence);
     const ai = getAiConfiguration();
-    const inputHash = await sha256(`${PROMPT_VERSION}\n${ai.provider}\n${ai.model}\n${resume.content_hash}\n${position.jd_text}\n${analysisContext}`);
     const current = await loadSuggestions(supabase, positionId);
+    const existingContext = phase === "expand" ? JSON.stringify(current.map((item) => ({ action: item.action, suggested: item.suggested_text }))) : "";
+    const inputHash = await sha256(`${PROMPT_VERSION}\n${phase}\n${ai.provider}\n${ai.model}\n${resume.content_hash}\n${position.jd_text}\n${analysisContext}\n${existingContext}`);
+    const task = `resume-${phase}`;
     const { data: cachedRun } = await supabase.from("ai_runs").select("id,model,duration_ms")
-      .eq("position_id", positionId).eq("task", "resume").eq("input_hash", inputHash).eq("status", "ready").maybeSingle();
+      .eq("position_id", positionId).eq("task", task).eq("input_hash", inputHash).eq("status", "ready").maybeSingle();
     if (cachedRun && current.length && !body.force) return Response.json({ data: { suggestions: current, meta: { model: cachedRun.model, cached: true } } });
     if (cachedRun) await supabase.from("ai_runs").delete().eq("id", cachedRun.id);
 
     const { data: run, error: runError } = await supabase.from("ai_runs").insert({
-      user_id: user.user.id, position_id: positionId, task: "resume", model: ai.model,
+      user_id: user.user.id, position_id: positionId, task, model: ai.model,
       prompt_version: PROMPT_VERSION, input_hash: inputHash, status: "processing",
     }).select("id").single();
     if (runError) throw runError;
@@ -74,20 +77,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const result = await runAnalysis({
       kind: "resume", category: positionCategorySchema.parse(position.category),
-      jd: position.jd_text, resume: resume.parsed_text, analysisContext,
+      jd: position.jd_text, resume: resume.parsed_text, analysisContext, existingContext, phase,
     });
     const validated = resumeSuggestionsSchema.parse(result.data);
     const suggestions = validated.suggestions.flatMap((item) => {
       const original = resume.parsed_text.includes(item.original)
         ? item.original
         : item.sourceQuotes.find((quote) => resume.parsed_text.includes(quote));
-      return original ? [{ ...item, original }] : [];
+      return original ? [{ ...item, original }] : item.action === "add" ? [item] : [];
     });
     if (!suggestions.length) throw new Error("模型没有返回可定位的简历原文");
-    const { error: deleteError } = await supabase.from("resume_suggestions").delete().eq("position_id", positionId);
-    if (deleteError) throw deleteError;
-    if (suggestions.length) {
-      const { error: insertError } = await supabase.from("resume_suggestions").insert(suggestions.map((item) => ({
+    if (phase === "core") {
+      const { error: deleteError } = await supabase.from("resume_suggestions").delete().eq("position_id", positionId);
+      if (deleteError) throw deleteError;
+    }
+    const freshSuggestions = phase === "expand"
+      ? suggestions.filter((item) => !current.some((saved) => saved.suggested_text.trim() === item.suggested.trim()))
+      : suggestions;
+    if (freshSuggestions.length) {
+      const { error: insertError } = await supabase.from("resume_suggestions").insert(freshSuggestions.map((item) => ({
         user_id: user.user.id,
         position_id: positionId,
         action: item.action,
@@ -105,7 +113,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       status: "ready", model: result.model, duration_ms: durationMs,
       input_tokens: result.usage?.prompt_tokens ?? null, output_tokens: result.usage?.completion_tokens ?? null,
     }).eq("id", runId);
-    return Response.json({ data: { suggestions: await loadSuggestions(supabase, positionId), meta: { model: result.model, provider: result.provider, durationMs } } });
+    return Response.json({ data: { suggestions: await loadSuggestions(supabase, positionId), meta: { model: result.model, provider: result.provider, durationMs, phase } } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "定制简历生成失败";
     try {

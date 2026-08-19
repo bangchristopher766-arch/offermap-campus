@@ -128,13 +128,14 @@ test("implements private PDF resume versions", async () => {
 });
 
 test("persists grounded resume suggestions and interview maps", async () => {
-  const [component, analysisRoute, resumeRoute, interviewRoute, suggestionRoute, engine] = await Promise.all([
+  const [component, analysisRoute, resumeRoute, interviewRoute, suggestionRoute, engine, aiClient] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/resume-suggestions/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/interview-map/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resume-suggestions/[id]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/analysis-engine.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/ai-client.ts", import.meta.url), "utf8"),
   ]);
   assert.match(analysisRoute, /resume_suggestions/);
   assert.match(analysisRoute, /interview_questions/);
@@ -144,6 +145,13 @@ test("persists grounded resume suggestions and interview maps", async () => {
   assert.match(interviewRoute, /question_followups/);
   assert.match(suggestionRoute, /accepted/);
   assert.match(engine, /EVIDENCE_MAP/);
+  assert.match(engine, /DEEP_ANALYSIS_PLAN/);
+  assert.match(engine, /SOURCE_CATALOG/);
+  assert.match(engine, /callTextModel/);
+  assert.match(resumeRoute, /resume-\$\{phase\}/);
+  assert.match(interviewRoute, /interview-\$\{phase\}/);
+  assert.match(aiClient, /finishReason/);
+  assert.match(component, /核心结果已生成/);
   assert.match(component, /生成定制建议/);
   assert.match(component, /生成追问地图/);
   assert.match(component, /navigator\.clipboard/);
