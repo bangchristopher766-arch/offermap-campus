@@ -212,6 +212,8 @@ test("persists grounded resume suggestions and interview maps", async () => {
   assert.match(engine, /不得把“参与”升级成“负责\/主导”/);
   assert.match(resumeRoute, /resume-\$\{phase\}/);
   assert.match(resumeRoute, /resume-v5-fast-single-call/);
+  assert.match(analysisRoute, /const resumeCompleted = completedRows\.some\(\(run\) => run\.task === "resume-core"\)/);
+  assert.doesNotMatch(analysisRoute, /resume-v4-cohesive-tailored-version/);
   assert.match(interviewRoute, /interview-\$\{phase\}/);
   assert.match(aiClient, /finishReason/);
   assert.match(component, /核心结果已生成/);

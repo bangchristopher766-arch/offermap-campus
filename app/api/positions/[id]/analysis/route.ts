@@ -130,7 +130,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     ]);
     const questions = await enrichQuestionPreparations(supabase, rawQuestions);
     const completedRows = completedRuns.data ?? [];
-    const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && run.prompt_version === "resume-v4-cohesive-tailored-version");
+    // A ready core run is the durable completion signal. Do not gate visibility on
+    // a hard-coded prompt version: prompt upgrades must not hide persisted results.
+    const resumeCompleted = completedRows.some((run) => run.task === "resume-core");
     const interviewCompleted = completedRows.some((run) => run.task === "interview-core");
     return Response.json({ data: { position, resume, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted, activeRun, history: historyRuns.data ?? [] } } });
   } catch (error) {
