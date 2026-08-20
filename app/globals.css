@@ -348,7 +348,7 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .analysis-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; }
 .analysis-heading h1 { font-size: clamp(30px, 3.3vw, 46px); }
 .analysis-heading > div > p { margin: 10px 0 0; color: var(--tertiary); font-size: 12px; }
-.analysis-heading-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 9px; }
+.analysis-heading-actions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }
 .breadcrumb { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; color: var(--tertiary); font-size: 11px; }
 .breadcrumb a { color: var(--blue); }
 .application-progress { position: relative; margin-top: 24px; padding: 19px 21px; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,.045); }
@@ -459,6 +459,27 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .jd-full-text > div span { color: var(--tertiary); font-size: 9px; }
 .jd-full-text pre { margin: 16px 0 0; white-space: pre-wrap; word-break: break-word; color: #3a3a3d; font: inherit; font-size: 12px; line-height: 1.8; }
 .jd-drawer > footer { min-height: 76px; padding: 15px 24px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: flex-end; gap: 9px; background: white; }
+.analysis-history-drawer { width: min(560px,94vw); }
+.analysis-history-drawer .history-icon { color: #0865cb; background: #e7f2ff; }
+.history-summary { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.history-summary > div { padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.history-summary strong, .history-summary span { display: block; }
+.history-summary strong { font-size: 20px; }
+.history-summary span { margin-top: 4px; color: var(--tertiary); font-size: 9px; }
+.history-list { display: grid; gap: 9px; margin-top: 18px; }
+.history-list article { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: start; gap: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: white; }
+.history-status { display: inline-flex; align-items: center; gap: 5px; min-width: 59px; padding: 5px 7px; border-radius: 999px; color: #236d3e; background: #eaf7ee; font-size: 9px; }
+.history-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.history-status.processing { color: #1769aa; background: #eaf4fc; }
+.history-status.failed { color: #a6483e; background: #fff0ee; }
+.history-list h3 { margin: 1px 0 5px; font-size: 12px; }
+.history-list p { margin: 0; color: var(--tertiary); font-size: 9px; }
+.history-list small { display: block; margin-top: 7px; color: #a6483e; font-size: 9px; line-height: 1.45; }
+.history-metrics { display: grid; justify-items: end; gap: 5px; color: var(--tertiary); font-size: 8px; white-space: nowrap; }
+.history-empty { padding: 70px 24px; text-align: center; color: var(--tertiary); }
+.history-empty strong { display: block; margin-top: 12px; color: var(--ink); font-size: 14px; }
+.history-empty p { max-width: 290px; margin: 7px auto 0; font-size: 10px; line-height: 1.55; }
+.analysis-history-drawer > footer p { margin: 0 auto 0 0; color: var(--tertiary); font-size: 9px; }
 .danger-icon { color: #c4433b; background: #fff0ee; }
 .compact-confirm { padding-top: 28px; }
 @keyframes drawer-in { from { transform: translateX(28px); opacity: .75; } }
@@ -646,6 +667,8 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
   .page-header, .analysis-heading { align-items: flex-start; flex-direction: column; }
   .analysis-heading-actions { width: 100%; }
   .analysis-heading-actions > button { flex: 1; }
+  .analysis-heading-actions .icon-only-desktop { flex: 0 0 40px; width: 40px; padding: 0; }
+  .analysis-heading-actions .icon-only-desktop span { display: none; }
   .page-header h1 { font-size: 38px; }
   .entry-grid, .recent-grid { grid-template-columns: 1fr; gap: 12px; }
   .next-grid { grid-template-columns: 1fr; }

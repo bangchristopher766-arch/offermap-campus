@@ -243,3 +243,17 @@ test("persists, resumes, and safely retries AI analysis runs", async () => {
   assert.match(component, /上次分析没有正常结束/);
   assert.match(component, /coreResult\.meta\?\.inProgress/);
 });
+
+test("provides analysis history and a portable job preparation report", async () => {
+  const [component, analysisRoute] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(analysisRoute, /input_tokens,output_tokens/);
+  assert.match(analysisRoute, /history: historyRuns\.data/);
+  assert.match(component, /function AnalysisHistoryDrawer/);
+  assert.match(component, /分析记录/);
+  assert.match(component, /导出准备包/);
+  assert.match(component, /求职准备包\.md/);
+  assert.match(component, /text\/markdown/);
+});

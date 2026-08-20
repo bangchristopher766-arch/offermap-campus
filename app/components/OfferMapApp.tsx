@@ -14,12 +14,14 @@ import {
   CircleDot,
   Command,
   Copy,
+  Download,
   FileCheck2,
   FileText,
   Filter,
   LoaderCircle,
   LogOut,
   Map,
+  History,
   MoreHorizontal,
   MoveDown,
   MoveUp,
@@ -132,13 +134,24 @@ type ActiveAnalysisRun = {
   startedAt: string;
   stalled: boolean;
 };
+type AnalysisRunRecord = {
+  id: string;
+  task: string;
+  model: string;
+  status: "processing" | "ready" | "failed";
+  duration_ms?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  error_code?: string | null;
+  created_at: string;
+};
 type PositionAnalysisData = {
   position: AnalysisPosition;
   resume?: AnalysisResume | null;
   evidence: AnalysisEvidenceItem[];
   suggestions: ResumeSuggestionRecord[];
   questions: InterviewQuestionRecord[];
-  meta?: { model?: string; provider?: string; durationMs?: number; phase?: "core" | "expand"; resumeCompleted?: boolean; interviewCompleted?: boolean; activeRun?: ActiveAnalysisRun | null; inProgress?: boolean; completed?: boolean };
+  meta?: { model?: string; provider?: string; durationMs?: number; phase?: "core" | "expand"; resumeCompleted?: boolean; interviewCompleted?: boolean; activeRun?: ActiveAnalysisRun | null; inProgress?: boolean; completed?: boolean; history?: AnalysisRunRecord[] };
 };
 
 const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
@@ -612,6 +625,7 @@ function MapCompany({ className, mark, name, subtitle, tags, stage, status, tone
 
 function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, error, run, toggleSuggestion, live }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void; data: PositionAnalysisData | null; loading: boolean; runningKind: AnalysisTab | null; runningPhase: AnalysisRunPhase; error: string; run: (kind: AnalysisTab) => Promise<void>; toggleSuggestion: (id: string, accepted: boolean) => Promise<void>; live: boolean }) {
   const [jdOpen, setJdOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const position = data?.position;
   const companyRelation = position?.companies;
   const companyName = Array.isArray(companyRelation) ? companyRelation[0]?.name : companyRelation?.name;
@@ -627,9 +641,48 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
   const running = Boolean(runningKind) || persistedRunning;
   const modelLabel = data?.meta?.model?.startsWith("deepseek") ? "DeepSeek" : "AI";
   const actionLabel = running ? "正在分析" : activeRun?.stalled ? "重新开始" : hasEvidence ? "重新生成" : "开始分析";
+  const exportReport = () => {
+    if (!data?.position) return;
+    const evidenceStatus = { strong: "证据充分", partial: "部分支持", missing: "暂无证据" } as const;
+    const lines = [
+      `# ${companyName ?? "目标公司"} · ${data.position.title} 求职准备包`,
+      "",
+      `生成时间：${new Date().toLocaleString("zh-CN")}`,
+      `岗位类别：${categoryName}`,
+      `地点 / 部门：${[data.position.location, data.position.department].filter(Boolean).join(" / ") || "未填写"}`,
+      `母版简历：${data.resume ? `${data.resume.name} · v${data.resume.version}` : "未关联"}`,
+      "",
+      "## 完整 JD",
+      "",
+      data.position.jd_text,
+      "",
+      "## 证据地图",
+      "",
+      ...data.evidence.flatMap((item, index) => {
+        const relation = firstRelation(item);
+        const quotes = resumeQuotesFrom(item);
+        return [`### ${index + 1}. ${item.requirement}`, "", `- 状态：${evidenceStatus[relation?.status ?? "missing"]}`, `- JD 原文：${item.jd_quote}`, `- 简历证据：${quotes.length ? quotes.join("；") : "暂无"}`, `- 判断：${relation?.rationale ?? "暂无"}`, `- 补强动作：${relation?.action ?? "暂无"}`, ""];
+      }),
+      "## 定制简历建议",
+      "",
+      ...(data.suggestions.length ? data.suggestions.flatMap((item, index) => [`### ${index + 1}. ${item.action === "rewrite" ? "改写" : item.action === "keep" ? "保留" : item.action === "add" ? "补充" : "弱化"}`, "", `- 母版原文：${item.original_text}`, `- 建议版本：${item.edited_text || item.suggested_text}`, `- 修改理由：${item.reason}`, `- 面试风险：${item.risk}`, ""]) : ["尚未生成定制简历建议。", ""]),
+      "## 面试追问地图",
+      "",
+      ...(data.questions.length ? data.questions.flatMap((item, index) => [`### ${index + 1}. ${item.main_question}`, "", `- 优先级：${item.priority === "high" ? "高" : item.priority === "medium" ? "中" : "低"} · ${item.priority_reason}`, `- 考察意图：${item.intent}`, `- 递进追问：${(item.question_followups ?? []).map((followup) => followup.question).join("；") || "暂无"}`, `- 回答结构：${item.answer_structure.join(" → ")}`, `- 需要补充：${item.missing_information || "暂无"}`, `- 回答风险：${item.risk}`, ""]) : ["尚未生成面试追问地图。", ""]),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${companyName ?? "OfferMap"}-${data.position.title}-求职准备包.md`.replace(/[\\/:*?"<>|]/g, "-");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
   return (
     <>
-      <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">{companyName ?? (live ? "目标岗位" : "字节跳动")}</a><ChevronRight size={13} /><span>{live ? categoryName : "产品"}</span><ChevronRight size={13} /><span>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</span></div><h1>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</h1><p>{position ? [position.location, position.department, position.job_code].filter(Boolean).join(" · ") || "岗位信息已保存" : live ? "正在读取岗位与简历数据" : "北京 · Flow 产品团队 · JD-2026-0821"}</p></div>{(!live || position) && <div className="analysis-heading-actions"><button className="secondary-button" type="button" onClick={() => setJdOpen(true)}><PanelRightOpen size={15} />岗位信息与 JD</button><button className="primary-button" type="button" onClick={() => void run("evidence")} disabled={running || loading}>{runningKind === "evidence" ? <LoaderCircle className="state-spinner inline" size={15} /> : <RefreshCw size={15} />}{actionLabel}</button></div>}</div>
+      <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">{companyName ?? (live ? "目标岗位" : "字节跳动")}</a><ChevronRight size={13} /><span>{live ? categoryName : "产品"}</span><ChevronRight size={13} /><span>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</span></div><h1>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</h1><p>{position ? [position.location, position.department, position.job_code].filter(Boolean).join(" · ") || "岗位信息已保存" : live ? "正在读取岗位与简历数据" : "北京 · Flow 产品团队 · JD-2026-0821"}</p></div>{(!live || position) && <div className="analysis-heading-actions"><button className="secondary-button icon-only-desktop" type="button" onClick={() => setHistoryOpen(true)} title="分析记录"><History size={15} /><span>分析记录</span></button><button className="secondary-button icon-only-desktop" type="button" onClick={exportReport} disabled={!hasEvidence} title="导出准备包"><Download size={15} /><span>导出准备包</span></button><button className="secondary-button" type="button" onClick={() => setJdOpen(true)}><PanelRightOpen size={15} />岗位信息与 JD</button><button className="primary-button" type="button" onClick={() => void run("evidence")} disabled={running || loading}>{runningKind === "evidence" ? <LoaderCircle className="state-spinner inline" size={15} /> : <RefreshCw size={15} />}{actionLabel}</button></div>}</div>
       {loading && <section className="card analysis-state-card"><LoaderCircle className="state-spinner" size={28} /><div><strong>正在读取岗位分析</strong><p>正在同步 JD、简历版本和已保存的证据。</p></div></section>}
       {error && <section className="analysis-inline-error"><AlertCircle size={16} /><span>{error}</span>{position && !running && <button type="button" onClick={() => void run(tab)}>重试分析</button>}</section>}
       {activeRun?.stalled && !runningKind && <section className="analysis-stalled-card"><AlertCircle size={17} /><div><strong>上次分析没有正常结束</strong><p>已保留现有结果，不会继续占用调用；可以从当前模块安全重新开始。</p></div><button className="secondary-button compact" type="button" onClick={() => void run(activeRun.kind)}>重新开始</button></section>}
@@ -641,8 +694,16 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
       {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} resume={data.resume} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={effectiveKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={effectiveKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制版简历" body="保留母版简历的完整结构，只对与 JD 最相关的经历做有针对性的重新表达；同一条经历只改写一次。" action="生成定制简历" onAction={() => run("resume")} running={effectiveKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={effectiveKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={effectiveKind === "interview"} /> : <InterviewPanel />)}
       </>}
       {jdOpen && <JobDetailDrawer position={position} companyName={companyName ?? "字节跳动"} categoryName={live ? categoryName : "产品"} close={() => setJdOpen(false)} />}
+      {historyOpen && <AnalysisHistoryDrawer history={data?.meta?.history ?? []} close={() => setHistoryOpen(false)} />}
     </>
   );
+}
+
+function AnalysisHistoryDrawer({ history, close }: { history: AnalysisRunRecord[]; close: () => void }) {
+  const taskLabel = (task: string) => task === "evidence" ? "证据地图" : task === "resume-core" ? "定制简历 · 核心" : task === "resume-expand" ? "定制简历 · 补充" : task === "interview-core" ? "面试地图 · 核心" : task === "interview-expand" ? "面试地图 · 补充" : task;
+  const statusLabel = { processing: "分析中", ready: "已完成", failed: "未完成" } as const;
+  const completed = history.filter((item) => item.status === "ready").length;
+  return <div className="jd-drawer-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="jd-drawer analysis-history-drawer" role="dialog" aria-modal="true" aria-labelledby="analysis-history-title"><header><div><span className="jd-drawer-icon history-icon"><History size={19} /></span><div><p>岗位分析档案</p><h2 id="analysis-history-title">分析记录</h2></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭分析记录"><X size={19} /></button></header><div className="jd-drawer-body"><section className="history-summary"><div><strong>{history.length}</strong><span>最近运行</span></div><div><strong>{completed}</strong><span>成功完成</span></div><div><strong>{new Set(history.map((item) => item.model)).size}</strong><span>使用模型</span></div></section>{history.length ? <div className="history-list">{history.map((item) => { const tokens = (item.input_tokens ?? 0) + (item.output_tokens ?? 0); return <article key={item.id}><span className={`history-status ${item.status}`}><i />{statusLabel[item.status]}</span><div><h3>{taskLabel(item.task)}</h3><p>{item.model} · {new Date(item.created_at).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>{item.status === "failed" && item.error_code && !item.error_code.startsWith("running:") && <small>{item.error_code === "stalled:auto-released" ? "任务等待时间过长，已安全释放，可重新生成。" : item.error_code}</small>}</div><div className="history-metrics">{item.duration_ms ? <span>{Math.max(1, Math.round(item.duration_ms / 1000))} 秒</span> : null}{tokens > 0 ? <span>{tokens.toLocaleString()} tokens</span> : null}</div></article>; })}</div> : <section className="history-empty"><History size={27} /><strong>还没有分析记录</strong><p>生成证据地图、定制简历或面试追问后，会在这里留下运行档案。</p></section>}</div><footer><p>记录用于判断模型运行是否成功，不包含完整简历正文。</p><button className="primary-button" type="button" onClick={close}>完成</button></footer></aside></div>;
 }
 
 function JobDetailDrawer({ position, companyName, categoryName, close }: { position?: AnalysisPosition; companyName: string; categoryName: string; close: () => void }) {
@@ -1132,7 +1193,7 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
       const payload = await authenticatedFetch(`/api/positions/${positionId}/${endpoint}`, { method: "POST", body: JSON.stringify(kind === "evidence" ? { force: hasCurrent } : { force: hasCurrent, phase: "core" }) });
       const applyPayload = (response: { data?: unknown }) => {
         const next = response.data as Partial<PositionAnalysisData>;
-        setAnalysisData((current) => current ? { ...current, ...next, meta: next.meta ?? current.meta } : next as PositionAnalysisData);
+        setAnalysisData((current) => current ? { ...current, ...next, meta: { ...(current.meta ?? {}), ...(next.meta ?? {}) } } : next as PositionAnalysisData);
         return next;
       };
       const coreResult = applyPayload(payload);
@@ -1146,6 +1207,10 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
         } catch (expandError) {
           setAnalysisError(`核心结果已生成，补充批次暂未完成：${expandError instanceof Error ? expandError.message : "可以稍后重新生成"}`);
         }
+      }
+      if (session?.access_token) {
+        const refreshed = await fetchWorkspaceJson(`/api/positions/${positionId}/analysis`, session.access_token);
+        setAnalysisData(refreshed.data as PositionAnalysisData);
       }
       await loadWorkspace();
     } catch (runError) {

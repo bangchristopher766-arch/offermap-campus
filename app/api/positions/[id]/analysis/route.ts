@@ -92,16 +92,17 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const position = await loadPosition(supabase, id);
     if (!position) return Response.json({ error: "岗位不存在或你无权查看" }, { status: 404 });
-    const [evidence, suggestions, questions, completedRuns, resume, activeRun] = await Promise.all([
+    const [evidence, suggestions, questions, completedRuns, resume, activeRun, historyRuns] = await Promise.all([
       loadEvidence(supabase, id), loadSuggestions(supabase, id), loadQuestions(supabase, id),
       supabase.from("ai_runs").select("task,prompt_version").eq("position_id", id).eq("status", "ready").in("task", ["resume-core", "interview-core"]),
       loadResumeSummary(supabase, position.resume_id),
       loadActiveAiRun(supabase, id),
+      supabase.from("ai_runs").select("id,task,model,status,duration_ms,input_tokens,output_tokens,error_code,created_at").eq("position_id", id).order("created_at", { ascending: false }).limit(20),
     ]);
     const completedRows = completedRuns.data ?? [];
     const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && run.prompt_version === "resume-v4-cohesive-tailored-version");
     const interviewCompleted = completedRows.some((run) => run.task === "interview-core");
-    return Response.json({ data: { position, resume, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted, activeRun } } });
+    return Response.json({ data: { position, resume, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted, activeRun, history: historyRuns.data ?? [] } } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "分析读取失败" }, { status: 503 });
   }
