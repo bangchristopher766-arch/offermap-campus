@@ -11,6 +11,8 @@ OfferMap 把一份母版简历和多个目标岗位连接起来，按「公司 �
 - 无外部凭据时，首页以完整演示数据运行；配置 Supabase 后启用邮箱 Magic Link 登录、账号数据隔离和永久保存。
 - 母版简历使用私有 Storage 保存每一版 PDF，短期签名链接用于在线预览；数据库同步保存解析文本、页数和结构化内容。
 - 公司、岗位与求职阶段使用真实数据库；每次阶段变化都会留下历史事件。
+- 每道面试问题都可以保存回答草稿、真实案例、关键数据、补充笔记和准备状态。
+- 岗位分析页支持运行记录、完整准备包导出和面试前回答清单。
 
 ## 本地运行
 
@@ -53,6 +55,13 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 - `/api/companies/:id/positions`：创建具体岗位。
 - `/api/positions/:id`：修改、移动或删除岗位。
 - `/api/positions/:id/application`：读取或更新岗位求职阶段，并记录阶段历史。
+- `/api/interview-questions/:id/preparation`：保存当前账号对单道面试问题的回答准备。
+
+## 测试
+
+- `npm test`：构建、15 项产品与权限边界测试，以及 12 组匿名样本合同跑批。
+- `npm run test:batch`：单独运行技术、产品、运营、市场各 3 组样本检查。
+- `npm run test:isolation:live`：传入两个测试账号令牌后，验证账号 A 的岗位无法被账号 B 或匿名用户读取。
 
 ## 可靠性边界
 

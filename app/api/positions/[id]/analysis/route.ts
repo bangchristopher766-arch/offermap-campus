@@ -65,6 +65,35 @@ async function loadQuestions(supabase: ReturnType<typeof createUserSupabase>, po
   }));
 }
 
+type SavedPreparation = {
+  kind?: string;
+  version?: number;
+  status?: "not_started" | "drafting" | "ready";
+  answerDraft?: string;
+  realExample?: string;
+  keyMetrics?: string;
+  notes?: string;
+  updatedAt?: string;
+};
+
+async function enrichQuestionPreparations(supabase: ReturnType<typeof createUserSupabase>, questions: Awaited<ReturnType<typeof loadQuestions>>) {
+  if (!questions.length) return questions;
+  const ids = questions.map((question) => question.id);
+  const { data, error } = await supabase.from("feedback")
+    .select("id,target_id,comment,created_at").eq("target_type", "interview_question")
+    .in("target_id", ids).order("created_at", { ascending: false });
+  if (error) throw error;
+  const latest = new Map<string, SavedPreparation>();
+  for (const row of data ?? []) {
+    if (!row.target_id || latest.has(row.target_id)) continue;
+    try {
+      const parsed = JSON.parse(row.comment) as SavedPreparation;
+      if (parsed.kind === "question-preparation" && parsed.version === 1) latest.set(row.target_id, parsed);
+    } catch { void 0; }
+  }
+  return questions.map((question) => ({ ...question, preparation: latest.get(question.id) ?? null }));
+}
+
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
 }
@@ -92,13 +121,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const position = await loadPosition(supabase, id);
     if (!position) return Response.json({ error: "岗位不存在或你无权查看" }, { status: 404 });
-    const [evidence, suggestions, questions, completedRuns, resume, activeRun, historyRuns] = await Promise.all([
+    const [evidence, suggestions, rawQuestions, completedRuns, resume, activeRun, historyRuns] = await Promise.all([
       loadEvidence(supabase, id), loadSuggestions(supabase, id), loadQuestions(supabase, id),
       supabase.from("ai_runs").select("task,prompt_version").eq("position_id", id).eq("status", "ready").in("task", ["resume-core", "interview-core"]),
       loadResumeSummary(supabase, position.resume_id),
       loadActiveAiRun(supabase, id),
       supabase.from("ai_runs").select("id,task,model,status,duration_ms,input_tokens,output_tokens,error_code,created_at").eq("position_id", id).order("created_at", { ascending: false }).limit(20),
     ]);
+    const questions = await enrichQuestionPreparations(supabase, rawQuestions);
     const completedRows = completedRuns.data ?? [];
     const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && run.prompt_version === "resume-v4-cohesive-tailored-version");
     const interviewCompleted = completedRows.some((run) => run.task === "interview-core");

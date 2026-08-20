@@ -1,0 +1,198 @@
+{
+  "generatedBy": "npm run test:batch",
+  "mode": "offline-source-contract",
+  "note": "验证匿名样本覆盖、输入完整性与引用可定位性；真实模型语义质量需在具备服务端模型密钥的环境运行在线批次。",
+  "summary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "distribution": {
+      "technology": 3,
+      "product": 3,
+      "operations": 3,
+      "marketing": 3
+    }
+  },
+  "results": [
+    {
+      "id": "technology-backend-01",
+      "category": "technology",
+      "title": "后端开发实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "technology-data-02",
+      "category": "technology",
+      "title": "数据分析实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "technology-frontend-03",
+      "category": "technology",
+      "title": "前端开发实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "product-ai-01",
+      "category": "product",
+      "title": "AI 产品经理实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "product-growth-02",
+      "category": "product",
+      "title": "增长产品实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "product-platform-03",
+      "category": "product",
+      "title": "平台产品实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "operations-growth-01",
+      "category": "operations",
+      "title": "用户增长运营实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "operations-content-02",
+      "category": "operations",
+      "title": "内容运营实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "operations-community-03",
+      "category": "operations",
+      "title": "社区运营实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "marketing-brand-01",
+      "category": "marketing",
+      "title": "品牌市场实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "marketing-channel-02",
+      "category": "marketing",
+      "title": "渠道营销实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    },
+    {
+      "id": "marketing-event-03",
+      "category": "marketing",
+      "title": "市场活动实习生",
+      "passed": true,
+      "checks": {
+        "uniqueId": true,
+        "validCategory": true,
+        "substantiveJd": true,
+        "substantiveResume": true,
+        "requirementTraceable": true,
+        "evidenceTraceable": true,
+        "anonymous": true
+      }
+    }
+  ]
+}

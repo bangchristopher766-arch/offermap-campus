@@ -47,7 +47,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 export type OfferMapView = "home" | "resume" | "positions" | "map" | "analysis";
 type DemoState = "normal" | "empty" | "loading" | "error";
-type AnalysisTab = "evidence" | "resume" | "interview";
+type AnalysisRunKind = "evidence" | "resume" | "interview";
+type AnalysisTab = AnalysisRunKind | "preparation";
 type AnalysisRunPhase = "deep" | "expand" | null;
 type Category = "技术" | "产品" | "运营" | "市场";
 type ApplicationStage = "感兴趣" | "准备中" | "已投递" | "笔试中" | "一面中" | "二面中" | "终面中" | "Offer 沟通" | "已录用" | "未通过" | "已放弃";
@@ -106,6 +107,15 @@ type InterviewQuestionRecord = {
   source_requirement_ids: string[];
   source_evidence_ids: string[];
   question_followups?: Array<{ id: string; sort_order: number; question: string }>;
+  preparation?: QuestionPreparation | null;
+};
+type QuestionPreparation = {
+  status: "not_started" | "drafting" | "ready";
+  answerDraft: string;
+  realExample: string;
+  keyMetrics: string;
+  notes: string;
+  updatedAt?: string;
 };
 type AnalysisPosition = {
   id: string;
@@ -129,7 +139,7 @@ type AnalysisResume = {
 type ActiveAnalysisRun = {
   id: string;
   task: string;
-  kind: AnalysisTab;
+  kind: AnalysisRunKind;
   phase: "core" | "expand" | null;
   startedAt: string;
   stalled: boolean;
@@ -623,7 +633,7 @@ function MapCompany({ className, mark, name, subtitle, tags, stage, status, tone
   return <a href="/positions" className={`map-company ${className}`}><span className="company-mark map-mark">{mark}</span><div><strong>{name}</strong><small>{subtitle}</small></div><em className={`application-stage ${stageTone(stage)}`}>{stage}</em><div className="map-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div><p><i className={`live-dot ${tone}`} />{status}</p></a>;
 }
 
-function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, error, run, toggleSuggestion, live }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void; data: PositionAnalysisData | null; loading: boolean; runningKind: AnalysisTab | null; runningPhase: AnalysisRunPhase; error: string; run: (kind: AnalysisTab) => Promise<void>; toggleSuggestion: (id: string, accepted: boolean) => Promise<void>; live: boolean }) {
+function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, error, run, toggleSuggestion, savePreparation, live }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void; data: PositionAnalysisData | null; loading: boolean; runningKind: AnalysisRunKind | null; runningPhase: AnalysisRunPhase; error: string; run: (kind: AnalysisRunKind) => Promise<void>; toggleSuggestion: (id: string, accepted: boolean) => Promise<void>; savePreparation: (id: string, preparation: QuestionPreparation) => Promise<void>; live: boolean }) {
   const [jdOpen, setJdOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const position = data?.position;
@@ -668,7 +678,7 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
       ...(data.suggestions.length ? data.suggestions.flatMap((item, index) => [`### ${index + 1}. ${item.action === "rewrite" ? "改写" : item.action === "keep" ? "保留" : item.action === "add" ? "补充" : "弱化"}`, "", `- 母版原文：${item.original_text}`, `- 建议版本：${item.edited_text || item.suggested_text}`, `- 修改理由：${item.reason}`, `- 面试风险：${item.risk}`, ""]) : ["尚未生成定制简历建议。", ""]),
       "## 面试追问地图",
       "",
-      ...(data.questions.length ? data.questions.flatMap((item, index) => [`### ${index + 1}. ${item.main_question}`, "", `- 优先级：${item.priority === "high" ? "高" : item.priority === "medium" ? "中" : "低"} · ${item.priority_reason}`, `- 考察意图：${item.intent}`, `- 递进追问：${(item.question_followups ?? []).map((followup) => followup.question).join("；") || "暂无"}`, `- 回答结构：${item.answer_structure.join(" → ")}`, `- 需要补充：${item.missing_information || "暂无"}`, `- 回答风险：${item.risk}`, ""]) : ["尚未生成面试追问地图。", ""]),
+      ...(data.questions.length ? data.questions.flatMap((item, index) => [`### ${index + 1}. ${item.main_question}`, "", `- 优先级：${item.priority === "high" ? "高" : item.priority === "medium" ? "中" : "低"} · ${item.priority_reason}`, `- 考察意图：${item.intent}`, `- 递进追问：${(item.question_followups ?? []).map((followup) => followup.question).join("；") || "暂无"}`, `- 回答结构：${item.answer_structure.join(" → ")}`, `- 需要补充：${item.missing_information || "暂无"}`, `- 回答风险：${item.risk}`, `- 准备状态：${item.preparation?.status === "ready" ? "已完成" : item.preparation?.status === "drafting" ? "准备中" : "未准备"}`, `- 回答草稿：${item.preparation?.answerDraft || "尚未填写"}`, `- 真实案例：${item.preparation?.realExample || "尚未填写"}`, `- 关键数据：${item.preparation?.keyMetrics || "尚未填写"}`, `- 补充笔记：${item.preparation?.notes || "尚未填写"}`, ""]) : ["尚未生成面试追问地图。", ""]),
     ];
     const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -690,8 +700,9 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
       {live && position && !loading && !hasEvidence && !running && <section className="card analysis-empty-card"><span><WandSparkles size={25} /></span><h2>开始串联这份 JD 与母版简历</h2><p>AI 会按语义理解岗位能力与真实经历，允许跨措辞和多条证据组合；所有引用仍会在保存前校验。</p><button className="primary-button" type="button" onClick={() => void run("evidence")}><Sparkles size={15} />开始深度分析</button></section>}
       {running && <section className="card analysis-running-card"><div className="analysis-running-icon"><LoaderCircle className="state-spinner" size={24} /></div><div><strong>{effectiveKind === "resume" ? effectivePhase === "expand" ? "核心定制建议已保存，正在补充细节" : "正在深度分析岗位定制简历" : effectiveKind === "interview" ? effectivePhase === "expand" ? "核心面试问题已保存，正在扩展追问" : "正在深度分析面试追问地图" : "正在生成深度证据地图"}</strong><p>{persistedRunning && !runningKind ? "分析任务已经保存在账号中，你可以刷新或离开页面，回来后会自动恢复查看进度。" : effectiveKind === "resume" ? effectivePhase === "expand" ? "正在避开重复内容，补充中低优先级要求和能力缺口；你已经可以查看第一批结果。" : "先深度判断最关键的简历取舍，再单独整理和校验来源 ID。" : effectiveKind === "interview" ? effectivePhase === "expand" ? "正在补充不同考察角度；第一批高优先级问题已经可以查看。" : "先推理核心考察意图和问题链路，再单独整理和校验来源 ID。" : "正在拆解 JD、召回语义相近经历、组合多条证据并复核判断。"}</p><div className="loading-track"><span /></div></div></section>}
       {(!live || hasEvidence) && <>
-      <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
+      <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图'],['preparation','回答准备']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}{key === "preparation" && data?.questions?.length ? <small>{data.questions.filter((item) => item.preparation?.status === "ready").length}/{data.questions.length}</small> : null}</button>)}</div>
       {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} resume={data.resume} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={effectiveKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={effectiveKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制版简历" body="保留母版简历的完整结构，只对与 JD 最相关的经历做有针对性的重新表达；同一条经历只改写一次。" action="生成定制简历" onAction={() => run("resume")} running={effectiveKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={effectiveKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={effectiveKind === "interview"} /> : <InterviewPanel />)}
+      {tab === "preparation" && (live ? data?.questions?.length ? <AnswerPreparationPanel items={data.questions} save={savePreparation} /> : <PendingAnalysisModule title="先生成面试追问地图" body="回答准备会直接关联每一道面试问题。先生成追问地图，再补充你的真实案例、关键数据和回答草稿。" action="生成追问地图" onAction={() => run("interview")} running={effectiveKind === "interview"} /> : <AnswerPreparationPanel items={[]} save={async () => {}} />)}
       </>}
       {jdOpen && <JobDetailDrawer position={position} companyName={companyName ?? "字节跳动"} categoryName={live ? categoryName : "产品"} close={() => setJdOpen(false)} />}
       {historyOpen && <AnalysisHistoryDrawer history={data?.meta?.history ?? []} close={() => setHistoryOpen(false)} />}
@@ -807,6 +818,35 @@ function InterviewPanel({ items, evidence: evidenceItems = [], onRegenerate, run
   const sourceQuotes = sourceRequirements.flatMap((item) => resumeQuotesFrom(item));
   const priorityLabel = { high: "高", medium: "中", low: "低" } as const;
   return <div className="analysis-layout"><div className="analysis-list"><div className="question-legend"><span><i className="high" />高优先级：核心 JD 与突出经历直接交叉</span><span><i />中优先级：验证能力深度与缺口</span>{onRegenerate && <button className="secondary-button compact" type="button" onClick={() => void onRegenerate()} disabled={running}><RefreshCw size={13} />重新生成</button>}</div>{liveItems.map((item,index) => <article className={`card question-card ${selected?.id === item.id ? "selected" : ""}`} key={item.id}><div className="question-top"><span className="question-number">{String(index + 1).padStart(2, "0")}</span><div><small>{priorityLabel[item.priority]}优先级 · {item.priority_reason}</small><h2>{item.main_question}</h2></div></div><div className="intent-box"><Target size={17} /><p><strong>考察意图</strong>{item.intent}</p></div><div className="followup-grid"><div><h3>递进追问</h3>{(item.question_followups ?? []).map((followup,followIndex) => <p key={followup.id}><span>{followIndex + 1}</span>{followup.question}</p>)}</div><div><h3>推荐回答结构</h3><p>{item.answer_structure.join(" → ")}</p><h3>需要补充回忆</h3><p>{item.missing_information || "当前证据足够，重点准备细节与边界。"}</p></div></div><div className="question-risk"><AlertCircle size={14} /><p><strong>回答风险</strong>{item.risk}</p></div><button className="text-button" type="button" onClick={() => setSelectedId(item.id)}>查看关联证据 <ArrowRight size={14} /></button></article>)}</div><SourcePanel jdQuote={sourceRequirements[0]?.jd_quote ?? ""} resumeQuotes={sourceQuotes} /></div>;
+}
+
+const emptyPreparation: QuestionPreparation = { status: "not_started", answerDraft: "", realExample: "", keyMetrics: "", notes: "" };
+
+function AnswerPreparationPanel({ items, save }: { items: InterviewQuestionRecord[]; save: (id: string, preparation: QuestionPreparation) => Promise<void> }) {
+  const [selectedId, setSelectedId] = useState(items[0]?.id ?? "");
+  const selected = items.find((item) => item.id === selectedId) ?? items[0];
+  const readyCount = items.filter((item) => item.preparation?.status === "ready").length;
+  const draftingCount = items.filter((item) => item.preparation?.status === "drafting").length;
+  const highItems = items.filter((item) => item.priority === "high");
+  const highReady = highItems.filter((item) => item.preparation?.status === "ready").length;
+  const statusLabel = { not_started: "未准备", drafting: "准备中", ready: "已完成" } as const;
+  if (!items.length) return <section className="card analysis-empty-card module-pending"><span><Target size={23} /></span><h2>暂无需要准备的问题</h2><p>生成面试追问地图后，可以在这里逐题编写回答并形成面试前复习清单。</p></section>;
+  return <div className="preparation-workspace"><section className="preparation-overview"><div className="card"><span>整体进度</span><strong>{readyCount} / {items.length}</strong><small>{draftingCount ? `${draftingCount} 道正在准备` : "从高优先级问题开始"}</small></div><div className="card"><span>高优先级</span><strong>{highReady} / {highItems.length}</strong><small>{highReady === highItems.length && highItems.length ? "关键问题已准备完成" : "优先补齐核心问题"}</small></div><div className="card progress-card"><div><span>准备完成度</span><strong>{Math.round((readyCount / items.length) * 100)}%</strong></div><div className="preparation-progress"><i style={{ width: `${(readyCount / items.length) * 100}%` }} /></div><small>回答只保存在你的账号中</small></div></section><div className="preparation-layout"><aside className="card preparation-question-list"><header><div><h2>面试前清单</h2><p>按优先级逐题准备</p></div><span>{items.length} 题</span></header><div>{items.map((item, index) => { const status = item.preparation?.status ?? "not_started"; return <button className={selected?.id === item.id ? "active" : ""} type="button" onClick={() => setSelectedId(item.id)} key={item.id}><span className={`preparation-index ${item.priority}`}>{String(index + 1).padStart(2, "0")}</span><div><strong>{item.main_question}</strong><small>{item.priority === "high" ? "高优先级" : item.priority === "medium" ? "中优先级" : "低优先级"}</small></div><em className={`preparation-status ${status}`}>{statusLabel[status]}</em></button>; })}</div></aside>{selected && <AnswerPreparationEditor key={selected.id} question={selected} save={save} />}</div></div>;
+}
+
+function AnswerPreparationEditor({ question, save }: { question: InterviewQuestionRecord; save: (id: string, preparation: QuestionPreparation) => Promise<void> }) {
+  const [form, setForm] = useState<QuestionPreparation>(question.preparation ?? emptyPreparation);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const update = (key: keyof QuestionPreparation, value: string) => { setForm((current) => ({ ...current, [key]: value })); setSaved(false); };
+  const submit = async () => {
+    setSaving(true); setError("");
+    try { await save(question.id, form); setSaved(true); }
+    catch (saveError) { setError(saveError instanceof Error ? saveError.message : "保存失败，请重试"); }
+    finally { setSaving(false); }
+  };
+  return <section className="card preparation-editor"><header><div><span>{question.priority === "high" ? "高" : question.priority === "medium" ? "中" : "低"}优先级</span><h2>{question.main_question}</h2><p>{question.intent}</p></div><div className="preparation-status-picker">{([['not_started','未准备'],['drafting','准备中'],['ready','已完成']] as const).map(([value,label]) => <button className={form.status === value ? `active ${value}` : ""} type="button" onClick={() => { setForm((current) => ({ ...current, status: value })); setSaved(false); }} key={value}>{form.status === value && <Check size={12} />}{label}</button>)}</div></header><div className="preparation-guidance"><Sparkles size={15} /><p><strong>推荐结构</strong>{question.answer_structure.join(" → ")}</p></div><div className="preparation-fields"><label><span>回答草稿</span><textarea value={form.answerDraft} onChange={(event) => update("answerDraft", event.target.value)} rows={8} placeholder="用自己的语言写完整回答。重点说明背景、个人判断、具体动作、结果和复盘。" /></label><label><span>真实案例与个人贡献</span><textarea value={form.realExample} onChange={(event) => update("realExample", event.target.value)} rows={5} placeholder="记录可以使用的真实项目、你具体负责的部分，以及不能夸大的边界。" /></label><label><span>关键数据</span><textarea value={form.keyMetrics} onChange={(event) => update("keyMetrics", event.target.value)} rows={3} placeholder="例如用户规模、转化率变化、项目周期；没有准确数据时先写“待确认”。" /></label><label><span>补充笔记</span><textarea value={form.notes} onChange={(event) => update("notes", event.target.value)} rows={3} placeholder="记录容易忘记的细节、反问点或需要继续核实的信息。" /></label></div>{question.missing_information && <div className="preparation-reminder"><AlertCircle size={14} /><p><strong>AI 提醒补充</strong>{question.missing_information}</p></div>}{error && <p className="form-error preparation-save-error"><AlertCircle size={14} />{error}</p>}<footer><span>{saved ? <><CheckCircle2 size={14} />已保存到账号</> : question.preparation?.updatedAt ? `上次保存 ${new Date(question.preparation.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "填写后记得保存"}</span><button className="primary-button" type="button" onClick={() => void submit()} disabled={saving}>{saving ? <><LoaderCircle className="state-spinner inline" size={14} />保存中</> : "保存回答准备"}</button></footer></section>;
 }
 
 function SourcePanel({ jdQuote = "", resumeQuote = "", resumeQuotes = [] }: { jdQuote?: string; resumeQuote?: string; resumeQuotes?: string[] }) {
@@ -1006,7 +1046,7 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   const [resumesError, setResumesError] = useState("");
   const [analysisData, setAnalysisData] = useState<PositionAnalysisData | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(initialView === "analysis" && configured);
-  const [analysisRunningKind, setAnalysisRunningKind] = useState<AnalysisTab | null>(null);
+  const [analysisRunningKind, setAnalysisRunningKind] = useState<AnalysisRunKind | null>(null);
   const [analysisRunningPhase, setAnalysisRunningPhase] = useState<AnalysisRunPhase>(null);
   const [analysisError, setAnalysisError] = useState("");
   const activeAnalysisRunId = analysisData?.meta?.activeRun?.id;
@@ -1184,7 +1224,7 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
     await Promise.all([loadResumes(session), loadWorkspace(session)]);
   };
 
-  const runPositionAnalysis = async (kind: AnalysisTab) => {
+  const runPositionAnalysis = async (kind: AnalysisRunKind) => {
     if (!positionId) return;
     setAnalysisRunningKind(kind); setAnalysisRunningPhase(kind === "evidence" ? null : "deep"); setAnalysisTab(kind); setAnalysisError("");
     try {
@@ -1233,10 +1273,16 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
     setAnalysisData((current) => current ? { ...current, suggestions: current.suggestions.map((item) => item.id === id ? updated : item) } : current);
   };
 
+  const saveQuestionPreparation = async (id: string, preparation: QuestionPreparation) => {
+    const payload = await authenticatedFetch(`/api/interview-questions/${id}/preparation`, { method: "PATCH", body: JSON.stringify(preparation) });
+    const saved = payload.data as QuestionPreparation;
+    setAnalysisData((current) => current ? { ...current, questions: current.questions.map((item) => item.id === id ? { ...item, preparation: saved } : item) } : current);
+  };
+
   const signOut = async () => { await getBrowserSupabase(supabaseConfig)?.auth.signOut(); setWorkspaceCompanies([]); };
 
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} activateVersion={configured ? activateResumeVersion : async () => {}} deleteVersion={configured ? deleteResumeVersion : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} activateVersion={configured ? activateResumeVersion : async () => {}} deleteVersion={configured ? deleteResumeVersion : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} savePreparation={configured ? saveQuestionPreparation : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
 }

@@ -257,3 +257,40 @@ test("provides analysis history and a portable job preparation report", async ()
   assert.match(component, /求职准备包\.md/);
   assert.match(component, /text\/markdown/);
 });
+
+test("saves a private answer preparation workspace for every interview question", async () => {
+  const [component, preparationRoute, analysisRoute, migration] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/interview-questions/[id]/preparation/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/0001_offermap.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /回答准备/);
+  assert.match(component, /function AnswerPreparationPanel/);
+  assert.match(component, /回答草稿/);
+  assert.match(component, /真实案例与个人贡献/);
+  assert.match(component, /关键数据/);
+  assert.match(component, /保存回答准备/);
+  assert.match(preparationRoute, /auth\.getUser/);
+  assert.match(preparationRoute, /interview_questions/);
+  assert.match(preparationRoute, /target_type.*interview_question/s);
+  assert.match(preparationRoute, /user_id: user\.user\.id/);
+  assert.match(analysisRoute, /enrichQuestionPreparations/);
+  assert.match(analysisRoute, /question-preparation/);
+  assert.match(migration, /'ai_runs','feedback'/);
+  assert.match(migration, /auth\.uid\(\) = user_id/);
+});
+
+test("passes the 12-sample four-category batch contract", async () => {
+  const [fixture, report] = await Promise.all([
+    readFile(new URL("../tests/fixtures/analysis-samples.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../tests/reports/analysis-batch-report.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  assert.equal(fixture.length, 12);
+  assert.equal(report.summary.total, 12);
+  assert.equal(report.summary.passed, 12);
+  assert.equal(report.summary.failed, 0);
+  assert.deepEqual(report.summary.distribution, { technology: 3, product: 3, operations: 3, marketing: 3 });
+  assert.ok(fixture.every((sample) => sample.jd.includes(sample.expectedRequirement)));
+  assert.ok(fixture.every((sample) => sample.resume.includes(sample.expectedEvidenceQuote)));
+});
