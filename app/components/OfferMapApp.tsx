@@ -370,7 +370,7 @@ const STATE_COPY: Record<OfferMapView, Record<Exclude<DemoState, "normal">, { ti
   },
 };
 
-function AppHeader({ view, companies, userEmail, signOut }: { view: OfferMapView; companies: WorkspaceCompany[]; userEmail?: string; signOut?: () => void }) {
+function AppHeader({ view, companies, userEmail, signOut, openPassword }: { view: OfferMapView; companies: WorkspaceCompany[]; userEmail?: string; signOut?: () => void; openPassword?: () => void }) {
   const navView = view === "analysis" ? "positions" : view;
   const [searchOpen, setSearchOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -407,7 +407,7 @@ function AppHeader({ view, companies, userEmail, signOut }: { view: OfferMapView
             </div>
             <div className="header-menu-wrap">
               <button className="avatar" type="button" onClick={() => { setProfileOpen(!profileOpen); setCreateOpen(false); }} aria-label="个人中心" aria-expanded={profileOpen}>林</button>
-              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar">林</span><div><strong>{userEmail ? userEmail.split("@")[0] : "林同学"}</strong><small>{userEmail ?? "演示账号 · 产品方向"}</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a>{signOut ? <button type="button" onClick={signOut}><LogOut size={15} />退出登录</button> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
+              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar">林</span><div><strong>{userEmail ? userEmail.split("@")[0] : "林同学"}</strong><small>{userEmail ?? "演示账号 · 产品方向"}</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a>{signOut ? <><button type="button" onClick={() => { setProfileOpen(false); openPassword?.(); }}><ShieldCheck size={15} />设置登录密码</button><button type="button" onClick={signOut}><LogOut size={15} />退出登录</button></> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
             </div>
           </div>
         </div>
@@ -1017,27 +1017,93 @@ function PositionModal({ close, save }: { close: () => void; save?: (input: NewP
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="position-title"><div className="modal-heading"><div><span className="modal-icon gold"><BriefcaseBusiness /></span><div><h2 id="position-title">新建目标岗位</h2><p>公司 → 岗位类别 → 具体岗位</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭"><X size={18} /></button></div><div className="form-grid"><label><span>公司</span><input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="例如：字节跳动" /></label><label><span>岗位名称</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：AI 产品经理实习生" /></label><fieldset><legend>岗位类别</legend><div className="category-picker">{(["技术","产品","运营","市场"] as Category[]).map((item) => <button className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)} key={item}>{item}</button>)}</div></fieldset><div className="form-two"><label><span>部门（选填）</span><input value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="例如：Flow 产品" /></label><label><span>地点（选填）</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="例如：北京" /></label></div><label><span>岗位 JD</span><textarea value={jdText} onChange={(event) => setJdText(event.target.value)} rows={8} placeholder="粘贴完整岗位职责与要求……" /></label>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}</div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving}>{saving ? <><LoaderCircle className="state-spinner inline" size={14} />保存中</> : "保存岗位"}</button></div></section></div>;
 }
 
+function authErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("invalid login credentials")) return "邮箱或密码不正确";
+  if (normalized.includes("user already registered")) return "该邮箱已经注册，请直接登录";
+  if (normalized.includes("email not confirmed")) return "该邮箱仍在等待验证，请先在 Supabase 关闭邮箱确认";
+  if (normalized.includes("password") && (normalized.includes("short") || normalized.includes("least"))) return "密码长度不足，请设置至少 8 位密码";
+  if (normalized.includes("rate limit")) return "尝试次数过多，请稍后再试";
+  return message;
+}
+
 function LoginScreen({ supabaseConfig }: { supabaseConfig: SupabasePublicConfig }) {
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const sendLink = async () => {
+  const switchMode = (nextMode: "login" | "signup") => {
+    setMode(nextMode);
+    setError("");
+    setMessage("");
+    setPassword("");
+    setPasswordConfirmation("");
+  };
+  const submit = async () => {
     if (!email.includes("@")) { setError("请输入有效邮箱"); return; }
+    if (password.length < 8) { setError("请设置至少 8 位密码"); return; }
+    if (mode === "signup" && password !== passwordConfirmation) { setError("两次输入的密码不一致"); return; }
     const supabase = getBrowserSupabase(supabaseConfig);
     if (!supabase) return;
     setSending(true); setError(""); setMessage("");
-    const { error: authError } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: window.location.origin } });
-    if (authError) setError(authError.message); else setMessage("登录链接已发送，请前往邮箱完成登录。");
+    if (mode === "login") {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (authError) setError(authErrorMessage(authError.message));
+    } else {
+      const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password });
+      if (authError) setError(authErrorMessage(authError.message));
+      else if (!data.session) setMessage("账号已创建，但目前仍要求邮箱确认。请先让管理员关闭 Supabase 的 Confirm email 后再登录。");
+    }
     setSending(false);
   };
-  return <main className="login-screen"><section className="login-card card"><span className="login-brand"><span className="brand-symbol"><Route size={19} /></span>OfferMap</span><p className="eyebrow">真实数据工作台</p><h1>登录后继续求职准备</h1><p className="login-copy">你的公司、岗位、投递阶段和后续分析都会安全保存在个人账号中。</p><label className="login-field"><span>邮箱</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" onKeyDown={(event) => event.key === "Enter" && sendLink()} /></label>{error && <p className="login-feedback error"><AlertCircle size={14} />{error}</p>}{message && <p className="login-feedback success"><CheckCircle2 size={14} />{message}</p>}<button className="primary-button login-submit" type="button" onClick={sendLink} disabled={sending}>{sending ? <><LoaderCircle className="state-spinner inline" size={15} />发送中</> : "发送登录链接"}</button><div className="login-trust"><ShieldCheck size={15} />无需设置密码，登录链接仅在短时间内有效。</div></section></main>;
+  return (
+    <main className="login-screen">
+      <section className="login-card card">
+        <span className="login-brand"><span className="brand-symbol"><Route size={19} /></span>OfferMap</span>
+        <p className="eyebrow">应届求职工作台</p>
+        <h1>{mode === "login" ? "欢迎回来" : "创建你的求职工作区"}</h1>
+        <p className="login-copy">{mode === "login" ? "登录后继续准备岗位、简历和面试。" : "简历、岗位和分析记录只会保存在你的个人账号中。"}</p>
+        <div className="login-mode" role="tablist" aria-label="登录方式">
+          <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => switchMode("login")}>登录</button>
+          <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => switchMode("signup")}>注册</button>
+        </div>
+        <form className="login-form" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+          <label className="login-field"><span>邮箱</span><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" /></label>
+          <label className="login-field"><span>密码</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 8 位" /></label>
+          {mode === "signup" && <label className="login-field"><span>确认密码</span><input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} placeholder="再次输入密码" /></label>}
+          {error && <p className="login-feedback error"><AlertCircle size={14} />{error}</p>}
+          {message && <p className="login-feedback success"><CheckCircle2 size={14} />{message}</p>}
+          <button className="primary-button login-submit" type="submit" disabled={sending}>{sending ? <><LoaderCircle className="state-spinner inline" size={15} />处理中</> : mode === "login" ? "登录" : "创建账号"}</button>
+        </form>
+        <div className="login-trust"><ShieldCheck size={15} />试用阶段无需邮件验证；请妥善保存密码，暂不提供邮件找回。</div>
+      </section>
+    </main>
+  );
+}
+
+function PasswordModal({ close, save }: { close: () => void; save: (password: string) => Promise<void> }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async () => {
+    if (password.length < 8) { setError("请设置至少 8 位密码"); return; }
+    if (password !== confirmation) { setError("两次输入的密码不一致"); return; }
+    setSaving(true); setError("");
+    try { await save(password); close(); }
+    catch (saveError) { setError(authErrorMessage(saveError instanceof Error ? saveError.message : "密码保存失败")); }
+    finally { setSaving(false); }
+  };
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><section className="modal-card password-modal" role="dialog" aria-modal="true" aria-labelledby="password-title"><div className="modal-heading"><div><span className="modal-icon blue"><ShieldCheck /></span><div><h2 id="password-title">设置登录密码</h2><p>已有邮件链接账号设置后，也可以使用邮箱和密码登录。</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭"><X size={18} /></button></div><div className="stage-extra-fields"><label><span>新密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 8 位" /></label><label><span>确认密码</span><input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="再次输入密码" /></label>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}</div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close} disabled={saving}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving}>{saving ? <><LoaderCircle className="state-spinner inline" size={14} />保存中</> : "保存密码"}</button></div></section></div>;
 }
 
 export function OfferMapApp({ initialView = "home", positionId, supabaseConfig = null }: { initialView?: OfferMapView; positionId?: string; supabaseConfig?: SupabasePublicConfig | null }) {
   const [state, setState] = useState<DemoState>("normal");
   const [analysisTab, setAnalysisTab] = useState<AnalysisTab>("evidence");
-  const [modal, setModal] = useState<"resume" | "position" | null>(null);
+  const [modal, setModal] = useState<"resume" | "position" | "password" | null>(null);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; name: string } | null>(null);
   const configured = isSupabaseConfigured(supabaseConfig);
   const [session, setSession] = useState<Session | null>(null);
@@ -1274,9 +1340,15 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   };
 
   const signOut = async () => { await getBrowserSupabase(supabaseConfig)?.auth.signOut(); setWorkspaceCompanies([]); };
+  const saveLoginPassword = async (password: string) => {
+    const supabase = getBrowserSupabase(supabaseConfig);
+    if (!supabase) throw new Error("登录服务尚未配置");
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+  };
 
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} activateVersion={configured ? activateResumeVersion : async () => {}} deleteVersion={configured ? deleteResumeVersion : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} savePreparation={configured ? saveQuestionPreparation : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} openPassword={session ? () => setModal("password") : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} activateVersion={configured ? activateResumeVersion : async () => {}} deleteVersion={configured ? deleteResumeVersion : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} savePreparation={configured ? saveQuestionPreparation : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{modal === "password" && <PasswordModal close={() => setModal(null)} save={saveLoginPassword} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
 }
