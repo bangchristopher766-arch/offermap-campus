@@ -504,7 +504,9 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .truth-banner { display: flex; align-items: center; gap: 10px; padding: 15px 17px; border: 1px solid #dcebe2; border-radius: 16px; color: #287450; background: #f0f8f3; }
 .truth-banner span { font-size: 11px; line-height: 1.5; }
 .truth-banner strong { display: block; font-weight: 600; }
-.truth-banner .secondary-button { margin-left: auto; white-space: nowrap; }
+.truth-banner .analysis-inline-actions { margin-left: auto; }
+.analysis-inline-actions { display: flex; align-items: center; gap: 7px; }
+.analysis-inline-actions .secondary-button { margin-left: 0; white-space: nowrap; }
 .suggestion-card { padding: 21px; }
 .suggestion-card.selected { border-color: #c9ddf7; box-shadow: 0 12px 28px rgba(41, 105, 190, 0.08); }
 .suggestion-head { display: flex; align-items: center; gap: 10px; }
@@ -528,7 +530,7 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .suggestion-actions .text-button { margin-right: auto; }
 .question-legend { display: flex; gap: 22px; padding: 10px 13px; border: 1px dashed rgba(0,0,0,.12); border-radius: 13px; color: var(--tertiary); font-size: 10px; }
 .question-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.question-legend .secondary-button { margin-left: auto; }
+.question-legend .analysis-inline-actions { margin-left: auto; }
 .question-legend i { width: 8px; height: 8px; border-radius: 50%; background: #ff9f0a; }
 .question-legend i.high { background: #ff453a; }
 .question-card { padding: 21px; border-left: 3px solid #d6675e; }
@@ -769,6 +771,8 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
   .jd-drawer { width: 100%; max-width: none; }
   .jd-meta-grid { grid-template-columns: 1fr; }
   .question-legend { flex-direction: column; gap: 7px; }
+  .truth-banner { align-items: flex-start; flex-wrap: wrap; }
+  .truth-banner .analysis-inline-actions, .question-legend .analysis-inline-actions { width: 100%; margin-left: 0; }
   .form-two { grid-template-columns: 1fr; }
   .stage-picker { grid-template-columns: repeat(2,1fr); }
   .stage-extra-fields { grid-template-columns: 1fr; }

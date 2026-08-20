@@ -5,7 +5,7 @@ import { claimAiRun } from "@/lib/ai-run-guard";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "resume-v4-cohesive-tailored-version";
+const PROMPT_VERSION = "resume-v5-fast-single-call";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");

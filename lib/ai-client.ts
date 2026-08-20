@@ -36,7 +36,7 @@ const providerDefaults: Record<AiProvider, { model: string; endpoint: string }> 
     endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   },
   deepseek: {
-    model: "deepseek-v4-pro",
+    model: "deepseek-v4-flash",
     endpoint: "https://api.deepseek.com/chat/completions",
   },
   dashscope: {

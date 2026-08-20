@@ -201,21 +201,22 @@ test("persists grounded resume suggestions and interview maps", async () => {
   assert.match(interviewRoute, /interviewMapSchema/);
   assert.match(interviewRoute, /question_followups/);
   assert.match(suggestionRoute, /accepted/);
-  assert.match(engine, /EVIDENCE_MAP/);
-  assert.match(engine, /DEEP_ANALYSIS_PLAN/);
   assert.match(engine, /SOURCE_CATALOG/);
-  assert.match(engine, /callTextModel/);
+  assert.match(engine, /generateGroundedOutput/);
+  assert.match(engine, /thinking: false/);
   assert.match(engine, /isFaithfulResumeRewrite/);
-  assert.match(engine, /同一 evidenceId 只能出现一次/);
+  assert.match(engine, /同一 evidenceId 最多使用一次/);
   assert.match(engine, /不得把“参与”升级成“负责\/主导”/);
   assert.match(resumeRoute, /resume-\$\{phase\}/);
-  assert.match(resumeRoute, /resume-v4-cohesive-tailored-version/);
+  assert.match(resumeRoute, /resume-v5-fast-single-call/);
   assert.match(interviewRoute, /interview-\$\{phase\}/);
   assert.match(aiClient, /finishReason/);
   assert.match(component, /核心结果已生成/);
+  assert.match(component, /继续补充/);
+  assert.doesNotMatch(component, /const shouldExpand/);
   assert.match(component, /没有值得硬改的内容/);
   assert.match(component, /复制定制版/);
-  assert.match(component, /一版完整定制简历/);
+  assert.match(component, /核心结果已生成/);
   assert.match(component, /生成定制简历/);
   assert.match(component, /生成追问地图/);
   assert.match(component, /navigator\.clipboard/);
@@ -241,7 +242,7 @@ test("persists, resumes, and safely retries AI analysis runs", async () => {
   assert.match(component, /window\.setInterval/);
   assert.match(component, /分析任务已经保存在账号中/);
   assert.match(component, /上次分析没有正常结束/);
-  assert.match(component, /coreResult\.meta\?\.inProgress/);
+  assert.match(component, /result\.meta\?\.inProgress/);
 });
 
 test("provides analysis history and a portable job preparation report", async () => {
