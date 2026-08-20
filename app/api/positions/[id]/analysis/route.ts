@@ -1,6 +1,7 @@
 import { evidenceMapSchema, positionCategorySchema } from "@/lib/analysis-schema";
 import { getAiConfiguration, isAiConfigured } from "@/lib/ai-client";
 import { runAnalysis } from "@/lib/analysis-engine";
+import { claimAiRun, loadActiveAiRun } from "@/lib/ai-run-guard";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
@@ -91,15 +92,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const position = await loadPosition(supabase, id);
     if (!position) return Response.json({ error: "岗位不存在或你无权查看" }, { status: 404 });
-    const [evidence, suggestions, questions, completedRuns, resume] = await Promise.all([
+    const [evidence, suggestions, questions, completedRuns, resume, activeRun] = await Promise.all([
       loadEvidence(supabase, id), loadSuggestions(supabase, id), loadQuestions(supabase, id),
       supabase.from("ai_runs").select("task,prompt_version").eq("position_id", id).eq("status", "ready").in("task", ["resume-core", "interview-core"]),
       loadResumeSummary(supabase, position.resume_id),
+      loadActiveAiRun(supabase, id),
     ]);
     const completedRows = completedRuns.data ?? [];
     const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && run.prompt_version === "resume-v4-cohesive-tailored-version");
     const interviewCompleted = completedRows.some((run) => run.task === "interview-core");
-    return Response.json({ data: { position, resume, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted } } });
+    return Response.json({ data: { position, resume, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted, activeRun } } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "分析读取失败" }, { status: 503 });
   }
@@ -136,17 +138,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return Response.json({ data: { position, evidence: currentEvidence, meta: { model: cachedRun.model, durationMs: cachedRun.duration_ms, cached: true } } });
     }
     if (cachedRun && (body.force || !currentEvidence.length)) await supabase.from("ai_runs").delete().eq("id", cachedRun.id);
-    const { data: run, error: runError } = await supabase.from("ai_runs").insert({
-      user_id: user.user.id,
-      position_id: positionId,
-      task: "evidence",
-      model: aiConfiguration.model,
-      prompt_version: PROMPT_VERSION,
-      input_hash: inputHash,
-      status: "processing",
-    }).select("id").single();
-    if (runError) throw runError;
-    runId = run.id;
+    const claim = await claimAiRun({ supabase, userId: user.user.id, positionId, task: "evidence", model: aiConfiguration.model, promptVersion: PROMPT_VERSION, inputHash });
+    if (!claim.acquired) {
+      if (claim.activeRun?.kind === "evidence") await supabase.from("positions").update({ analysis_status: "processing", updated_at: new Date().toISOString() }).eq("id", positionId);
+      const refreshed = await loadPosition(supabase, positionId);
+      return Response.json({ data: { position: refreshed, evidence: currentEvidence, meta: { activeRun: claim.activeRun, inProgress: Boolean(claim.activeRun), completed: Boolean("completed" in claim && claim.completed) } } }, { status: claim.activeRun ? 202 : 200 });
+    }
+    runId = claim.runId;
     await supabase.from("positions").update({ analysis_status: "processing", resume_id: resume.id, updated_at: new Date().toISOString() }).eq("id", positionId);
 
     const result = await runAnalysis({ kind: "evidence", category, jd: position.jd_text, resume: resume.parsed_text, structuredResume: resume.structured_content });
@@ -221,6 +219,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       duration_ms: durationMs,
       input_tokens: result.usage?.prompt_tokens ?? null,
       output_tokens: result.usage?.completion_tokens ?? null,
+      error_code: null,
     }).eq("id", runId);
     await supabase.from("positions").update({
       analysis_status: "ready",
@@ -237,7 +236,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     try {
       const supabase = createUserSupabase(tokenFrom(request));
       if (runId) await supabase.from("ai_runs").update({ status: "failed", duration_ms: Date.now() - startedAt, error_code: message.slice(0, 240) }).eq("id", runId);
-      if (positionId) await supabase.from("positions").update({ analysis_status: "failed", updated_at: new Date().toISOString() }).eq("id", positionId);
+      if (positionId && runId) await supabase.from("positions").update({ analysis_status: "failed", updated_at: new Date().toISOString() }).eq("id", positionId);
     } catch { void 0; }
     return Response.json({ error: message.includes("引用") ? "模型引用未通过原文校验，请重新生成" : message }, { status: message.includes("aborted") ? 504 : 502 });
   }

@@ -220,3 +220,26 @@ test("persists grounded resume suggestions and interview maps", async () => {
   assert.match(component, /生成追问地图/);
   assert.match(component, /navigator\.clipboard/);
 });
+
+test("persists, resumes, and safely retries AI analysis runs", async () => {
+  const [component, guard, analysisRoute, resumeRoute, interviewRoute] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/ai-run-guard.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/resume-suggestions/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/interview-map/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(guard, /STALLED_AFTER_MS/);
+  assert.match(guard, /deterministicRunId/);
+  assert.match(guard, /loadActiveAiRun/);
+  assert.match(guard, /stalled:auto-released/);
+  for (const route of [analysisRoute, resumeRoute, interviewRoute]) {
+    assert.match(route, /claimAiRun/);
+    assert.match(route, /inProgress/);
+    assert.match(route, /activeRun/);
+  }
+  assert.match(component, /window\.setInterval/);
+  assert.match(component, /分析任务已经保存在账号中/);
+  assert.match(component, /上次分析没有正常结束/);
+  assert.match(component, /coreResult\.meta\?\.inProgress/);
+});

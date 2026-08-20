@@ -390,6 +390,12 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .analysis-running-card .loading-track { margin-top: 14px; }
 .analysis-inline-error { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding: 12px 14px; border: 1px solid #ffd5d0; border-radius: 13px; color: #a6362d; background: #fff3f1; font-size: 11px; }
 .analysis-inline-error button { margin-left: auto; border: 0; color: #a6362d; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; }
+.analysis-stalled-card { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 15px 16px; border: 1px solid #f3d7a4; border-radius: 15px; color: #77551f; background: #fff9ec; }
+.analysis-stalled-card > svg { flex: 0 0 auto; }
+.analysis-stalled-card > div { flex: 1; min-width: 0; }
+.analysis-stalled-card strong { display: block; font-size: 12px; font-weight: 600; }
+.analysis-stalled-card p { margin: 4px 0 0; color: #94723d; font-size: 10px; line-height: 1.55; }
+.analysis-stalled-card button { flex: 0 0 auto; }
 .analysis-empty-card { margin-top: 24px; padding: 52px 28px; text-align: center; }
 .analysis-empty-card > span { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto; border-radius: 16px; color: var(--blue); background: #edf5ff; }
 .analysis-empty-card h2 { margin: 17px 0 0; font-size: 20px; letter-spacing: -.02em; }

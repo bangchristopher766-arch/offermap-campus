@@ -1,6 +1,7 @@
 import { interviewMapSchema, positionCategorySchema } from "@/lib/analysis-schema";
 import { getAiConfiguration, isAiConfigured } from "@/lib/ai-client";
 import { runAnalysis } from "@/lib/analysis-engine";
+import { claimAiRun } from "@/lib/ai-run-guard";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
@@ -73,12 +74,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (cachedRun && current.length && !body.force) return Response.json({ data: { questions: current, meta: { model: cachedRun.model, cached: true } } });
     if (cachedRun) await supabase.from("ai_runs").delete().eq("id", cachedRun.id);
 
-    const { data: run, error: runError } = await supabase.from("ai_runs").insert({
-      user_id: user.user.id, position_id: positionId, task, model: ai.model,
-      prompt_version: PROMPT_VERSION, input_hash: inputHash, status: "processing",
-    }).select("id").single();
-    if (runError) throw runError;
-    runId = run.id;
+    const claim = await claimAiRun({ supabase, userId: user.user.id, positionId, task, model: ai.model, promptVersion: PROMPT_VERSION, inputHash });
+    if (!claim.acquired) {
+      return Response.json({ data: { questions: current, meta: { activeRun: claim.activeRun, inProgress: Boolean(claim.activeRun), completed: Boolean("completed" in claim && claim.completed), interviewCompleted: current.length > 0 } } }, { status: claim.activeRun ? 202 : 200 });
+    }
+    runId = claim.runId;
 
     const result = await runAnalysis({
       kind: "interview", category: positionCategorySchema.parse(position.category),
@@ -145,6 +145,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await supabase.from("ai_runs").update({
       status: "ready", model: result.model, duration_ms: durationMs,
       input_tokens: result.usage?.prompt_tokens ?? null, output_tokens: result.usage?.completion_tokens ?? null,
+      error_code: null,
     }).eq("id", runId);
     return Response.json({ data: { questions: await loadQuestions(supabase, positionId), meta: { model: result.model, provider: result.provider, durationMs, phase } } });
   } catch (error) {

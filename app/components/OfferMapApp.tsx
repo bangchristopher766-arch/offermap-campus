@@ -124,13 +124,21 @@ type AnalysisResume = {
   version: number;
   structured_content?: { sections?: ResumeSection[] } | null;
 };
+type ActiveAnalysisRun = {
+  id: string;
+  task: string;
+  kind: AnalysisTab;
+  phase: "core" | "expand" | null;
+  startedAt: string;
+  stalled: boolean;
+};
 type PositionAnalysisData = {
   position: AnalysisPosition;
   resume?: AnalysisResume | null;
   evidence: AnalysisEvidenceItem[];
   suggestions: ResumeSuggestionRecord[];
   questions: InterviewQuestionRecord[];
-  meta?: { model?: string; provider?: string; durationMs?: number; phase?: "core" | "expand"; resumeCompleted?: boolean; interviewCompleted?: boolean };
+  meta?: { model?: string; provider?: string; durationMs?: number; phase?: "core" | "expand"; resumeCompleted?: boolean; interviewCompleted?: boolean; activeRun?: ActiveAnalysisRun | null; inProgress?: boolean; completed?: boolean };
 };
 
 const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
@@ -612,20 +620,25 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
   const stage = application ? STAGE_FROM_DB[application.current_stage] ?? "准备中" : "准备中";
   const nextEvent = application?.next_event_at ? new Date(application.next_event_at) : null;
   const hasEvidence = Boolean(data?.evidence.length);
-  const running = Boolean(runningKind);
+  const activeRun = data?.meta?.activeRun;
+  const persistedRunning = Boolean(activeRun && !activeRun.stalled);
+  const effectiveKind = runningKind ?? (persistedRunning ? activeRun?.kind ?? null : null);
+  const effectivePhase = runningPhase ?? (persistedRunning ? activeRun?.phase ?? null : null);
+  const running = Boolean(runningKind) || persistedRunning;
   const modelLabel = data?.meta?.model?.startsWith("deepseek") ? "DeepSeek" : "AI";
-  const actionLabel = running ? "正在分析" : hasEvidence ? "重新生成" : "开始分析";
+  const actionLabel = running ? "正在分析" : activeRun?.stalled ? "重新开始" : hasEvidence ? "重新生成" : "开始分析";
   return (
     <>
       <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">{companyName ?? (live ? "目标岗位" : "字节跳动")}</a><ChevronRight size={13} /><span>{live ? categoryName : "产品"}</span><ChevronRight size={13} /><span>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</span></div><h1>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</h1><p>{position ? [position.location, position.department, position.job_code].filter(Boolean).join(" · ") || "岗位信息已保存" : live ? "正在读取岗位与简历数据" : "北京 · Flow 产品团队 · JD-2026-0821"}</p></div>{(!live || position) && <div className="analysis-heading-actions"><button className="secondary-button" type="button" onClick={() => setJdOpen(true)}><PanelRightOpen size={15} />岗位信息与 JD</button><button className="primary-button" type="button" onClick={() => void run("evidence")} disabled={running || loading}>{runningKind === "evidence" ? <LoaderCircle className="state-spinner inline" size={15} /> : <RefreshCw size={15} />}{actionLabel}</button></div>}</div>
       {loading && <section className="card analysis-state-card"><LoaderCircle className="state-spinner" size={28} /><div><strong>正在读取岗位分析</strong><p>正在同步 JD、简历版本和已保存的证据。</p></div></section>}
       {error && <section className="analysis-inline-error"><AlertCircle size={16} /><span>{error}</span>{position && !running && <button type="button" onClick={() => void run(tab)}>重试分析</button>}</section>}
+      {activeRun?.stalled && !runningKind && <section className="analysis-stalled-card"><AlertCircle size={17} /><div><strong>上次分析没有正常结束</strong><p>已保留现有结果，不会继续占用调用；可以从当前模块安全重新开始。</p></div><button className="secondary-button compact" type="button" onClick={() => void run(activeRun.kind)}>重新开始</button></section>}
       {position && <section className="card application-progress"><div className="progress-heading"><div><span>求职进度</span><strong>{nextEvent && !Number.isNaN(nextEvent.getTime()) ? `下一安排：${nextEvent.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}${application?.next_event_type ? ` · ${application.next_event_type}` : ""}` : "还没有设置下一安排"}</strong></div><span className={`application-stage ${stageTone(stage)}`}>{stage}</span></div><div className={`analysis-run-note ${position.analysis_status}`}><Sparkles size={14} /><span><strong>分析状态：</strong>{running || position.analysis_status === "processing" ? "AI 正在拆解能力要求、召回候选经历并进行深度判断。" : position.analysis_status === "ready" ? `${modelLabel} 证据地图已保存${position.analyzed_resume_version ? `，对应母版简历 v${position.analyzed_resume_version}` : ""}。` : position.analysis_status === "stale" ? "简历或 JD 已更新，需要重新生成证据地图。" : position.analysis_status === "failed" ? "上次分析没有通过校验，可以重新生成。" : "尚未生成证据地图。"}</span></div></section>}
       {live && position && !loading && !hasEvidence && !running && <section className="card analysis-empty-card"><span><WandSparkles size={25} /></span><h2>开始串联这份 JD 与母版简历</h2><p>AI 会按语义理解岗位能力与真实经历，允许跨措辞和多条证据组合；所有引用仍会在保存前校验。</p><button className="primary-button" type="button" onClick={() => void run("evidence")}><Sparkles size={15} />开始深度分析</button></section>}
-      {running && <section className="card analysis-running-card"><div className="analysis-running-icon"><LoaderCircle className="state-spinner" size={24} /></div><div><strong>{runningKind === "resume" ? runningPhase === "expand" ? "核心定制建议已保存，正在补充细节" : "正在深度分析岗位定制简历" : runningKind === "interview" ? runningPhase === "expand" ? "核心面试问题已保存，正在扩展追问" : "正在深度分析面试追问地图" : "正在生成深度证据地图"}</strong><p>{runningKind === "resume" ? runningPhase === "expand" ? "正在避开重复内容，补充中低优先级要求和能力缺口；你已经可以查看第一批结果。" : "先深度判断最关键的简历取舍，再单独整理和校验来源 ID。" : runningKind === "interview" ? runningPhase === "expand" ? "正在补充不同考察角度；第一批高优先级问题已经可以查看。" : "先推理核心考察意图和问题链路，再单独整理和校验来源 ID。" : "正在拆解 JD、召回语义相近经历、组合多条证据并复核判断。"}</p><div className="loading-track"><span /></div></div></section>}
+      {running && <section className="card analysis-running-card"><div className="analysis-running-icon"><LoaderCircle className="state-spinner" size={24} /></div><div><strong>{effectiveKind === "resume" ? effectivePhase === "expand" ? "核心定制建议已保存，正在补充细节" : "正在深度分析岗位定制简历" : effectiveKind === "interview" ? effectivePhase === "expand" ? "核心面试问题已保存，正在扩展追问" : "正在深度分析面试追问地图" : "正在生成深度证据地图"}</strong><p>{persistedRunning && !runningKind ? "分析任务已经保存在账号中，你可以刷新或离开页面，回来后会自动恢复查看进度。" : effectiveKind === "resume" ? effectivePhase === "expand" ? "正在避开重复内容，补充中低优先级要求和能力缺口；你已经可以查看第一批结果。" : "先深度判断最关键的简历取舍，再单独整理和校验来源 ID。" : effectiveKind === "interview" ? effectivePhase === "expand" ? "正在补充不同考察角度；第一批高优先级问题已经可以查看。" : "先推理核心考察意图和问题链路，再单独整理和校验来源 ID。" : "正在拆解 JD、召回语义相近经历、组合多条证据并复核判断。"}</p><div className="loading-track"><span /></div></div></section>}
       {(!live || hasEvidence) && <>
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
-      {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} resume={data.resume} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制版简历" body="保留母版简历的完整结构，只对与 JD 最相关的经历做有针对性的重新表达；同一条经历只改写一次。" action="生成定制简历" onAction={() => run("resume")} running={runningKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={runningKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={runningKind === "interview"} /> : <InterviewPanel />)}
+      {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} resume={data.resume} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={effectiveKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={effectiveKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制版简历" body="保留母版简历的完整结构，只对与 JD 最相关的经历做有针对性的重新表达；同一条经历只改写一次。" action="生成定制简历" onAction={() => run("resume")} running={effectiveKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={effectiveKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={effectiveKind === "interview"} /> : <InterviewPanel />)}
       </>}
       {jdOpen && <JobDetailDrawer position={position} companyName={companyName ?? "字节跳动"} categoryName={live ? categoryName : "产品"} close={() => setJdOpen(false)} />}
     </>
@@ -935,6 +948,8 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   const [analysisRunningKind, setAnalysisRunningKind] = useState<AnalysisTab | null>(null);
   const [analysisRunningPhase, setAnalysisRunningPhase] = useState<AnalysisRunPhase>(null);
   const [analysisError, setAnalysisError] = useState("");
+  const activeAnalysisRunId = analysisData?.meta?.activeRun?.id;
+  const activeAnalysisRunStalled = analysisData?.meta?.activeRun?.stalled;
 
   const authenticatedFetch = async (path: string, init?: RequestInit) => {
     if (!session?.access_token) throw new Error("登录状态已失效，请重新登录");
@@ -994,6 +1009,34 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => syncSession(nextSession));
     return () => listener.subscription.unsubscribe();
   }, [configured, supabaseConfig, initialView, positionId]);
+
+  useEffect(() => {
+    if (initialView !== "analysis" || !positionId || !session?.access_token || !activeAnalysisRunId || activeAnalysisRunStalled) return;
+    let cancelled = false;
+    let polling = false;
+    const accessToken = session.access_token;
+    const poll = async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        const payload = await fetchWorkspaceJson(`/api/positions/${positionId}/analysis`, accessToken);
+        if (cancelled) return;
+        const next = payload.data as PositionAnalysisData;
+        setAnalysisData(next);
+        if (!next.meta?.activeRun) {
+          setAnalysisError(next.position.analysis_status === "failed" ? "上次分析没有正常完成，可以重新生成。" : "");
+          void fetchWorkspaceJson("/api/companies", accessToken)
+            .then((workspace) => { if (!cancelled) setWorkspaceCompanies(mapWorkspaceCompanies(workspace.data)); })
+            .catch(() => undefined);
+        }
+      } catch {
+        // A transient polling failure should not replace an analysis that may still be running.
+      } finally { polling = false; }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [activeAnalysisRunId, activeAnalysisRunStalled, initialView, positionId, session?.access_token]);
 
   const createPosition = async (input: NewPositionInput) => {
     if (!configured) return;
@@ -1093,6 +1136,7 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
         return next;
       };
       const coreResult = applyPayload(payload);
+      if (coreResult.meta?.inProgress) return;
       const shouldExpand = kind === "interview" || (kind === "resume" && Boolean(coreResult.suggestions?.length));
       if (kind !== "evidence" && shouldExpand) {
         setAnalysisRunningPhase("expand");
@@ -1105,13 +1149,16 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
       }
       await loadWorkspace();
     } catch (runError) {
-      setAnalysisError(runError instanceof Error ? runError.message : "分析失败，请重试");
+      let recoveredRunningTask = false;
       if (session?.access_token) {
         try {
           const payload = await fetchWorkspaceJson(`/api/positions/${positionId}/analysis`, session.access_token);
-          setAnalysisData(payload.data as PositionAnalysisData);
+          const refreshed = payload.data as PositionAnalysisData;
+          setAnalysisData(refreshed);
+          recoveredRunningTask = Boolean(refreshed.meta?.activeRun && !refreshed.meta.activeRun.stalled);
         } catch { setAnalysisData(null); }
       }
+      setAnalysisError(recoveredRunningTask ? "" : runError instanceof Error ? runError.message : "分析失败，请重试");
     } finally { setAnalysisRunningKind(null); setAnalysisRunningPhase(null); }
   };
 
