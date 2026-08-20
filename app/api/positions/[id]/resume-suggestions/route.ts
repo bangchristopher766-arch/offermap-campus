@@ -85,7 +85,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const ai = getAiConfiguration();
     const current = await loadSuggestions(supabase, positionId);
     const existingContext = phase === "expand" ? JSON.stringify(current.map((item) => ({ action: item.action, original: item.original_text, suggested: item.suggested_text }))) : "";
-    const inputHash = await sha256(`${PROMPT_VERSION}\n${phase}\n${ai.provider}\n${ai.model}\n${resume.content_hash}\n${position.jd_text}\n${analysisContext}\n${existingContext}`);
+    const inputHash = await sha256(`${PROMPT_VERSION}\n${phase}\n${ai.provider}\n${ai.model}\n${resume.content_hash}\n${resume.parsed_text}\n${position.jd_text}\n${analysisContext}\n${existingContext}`);
     const task = `resume-${phase}`;
     const { data: cachedRun } = await supabase.from("ai_runs").select("id,model,duration_ms")
       .eq("position_id", positionId).eq("task", task).eq("input_hash", inputHash).eq("status", "ready").maybeSingle();

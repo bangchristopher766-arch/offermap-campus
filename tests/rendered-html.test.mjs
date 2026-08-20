@@ -127,6 +127,35 @@ test("implements private PDF resume versions", async () => {
   assert.match(migration, /public, file_size_limit/);
 });
 
+test("supports manual resume correction and invalidates stale analyses", async () => {
+  const [component, resumeRoute, analysisRoute, resumeSuggestionRoute, interviewRoute] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resumes/[id]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/resume-suggestions/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/interview-map/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /校正简历解析稿/);
+  assert.match(component, /保存校正稿/);
+  assert.match(component, /原始 PDF 不会被修改/);
+  assert.match(resumeRoute, /manual-correction/);
+  assert.match(resumeRoute, /analysis_status: "stale"/);
+  assert.match(resumeRoute, /parsed_text: parsedText/);
+  for (const route of [analysisRoute, resumeSuggestionRoute, interviewRoute]) {
+    assert.match(route, /resume\.parsed_text/);
+  }
+});
+
+test("exposes company and position management with destructive confirmation", async () => {
+  const component = await readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8");
+  assert.match(component, /function CompanyManageModal/);
+  assert.match(component, /删除公司及其岗位/);
+  assert.match(component, /function PositionManageModal/);
+  assert.match(component, /确认删除岗位/);
+  assert.match(component, /method: "PATCH"/);
+  assert.match(component, /method: "DELETE"/);
+});
+
 test("persists grounded resume suggestions and interview maps", async () => {
   const [component, analysisRoute, resumeRoute, interviewRoute, suggestionRoute, engine, aiClient] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),

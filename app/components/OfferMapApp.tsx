@@ -21,6 +21,9 @@ import {
   LogOut,
   Map,
   MoreHorizontal,
+  MoveDown,
+  MoveUp,
+  PencilLine,
   Plus,
   RefreshCw,
   Route,
@@ -29,6 +32,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Target,
+  Trash2,
   Upload,
   WandSparkles,
   X,
@@ -44,9 +48,10 @@ type AnalysisTab = "evidence" | "resume" | "interview";
 type AnalysisRunPhase = "deep" | "expand" | null;
 type Category = "技术" | "产品" | "运营" | "市场";
 type ApplicationStage = "感兴趣" | "准备中" | "已投递" | "笔试中" | "一面中" | "二面中" | "终面中" | "Offer 沟通" | "已录用" | "未通过" | "已放弃";
-type DemoPosition = { id: string; title: string; location: string; stage: ApplicationStage; analysis: string; next?: string; href: string };
+type DemoPosition = { id: string; title: string; category?: Category; department?: string; locationRaw?: string; location: string; jdText?: string; stage: ApplicationStage; analysis: string; next?: string; href: string };
 type WorkspaceCompany = { id: string; name: string; mark: string; groups: Array<{ category: Category; positions: DemoPosition[] }> };
 type NewPositionInput = { company: string; title: string; category: Category; department: string; location: string; jdText: string };
+type UpdatePositionInput = { title: string; category: Category; department: string; location: string; jdText: string };
 type StageUpdateInput = { stage: ApplicationStage; occurredAt: string; nextEventAt?: string; nextEventType?: string; note?: string };
 type ResumeSection = { title: string; items: string[] };
 type ResumeParseQuality = { level: "high" | "medium" | "low"; detected_sections: number; total_lines: number; warnings: string[] };
@@ -218,7 +223,11 @@ function mapWorkspaceCompanies(rows: unknown): WorkspaceCompany[] {
         return {
           id: String(position.id),
           title: String(position.title),
+          category,
+          department: typeof position.department === "string" ? position.department : "",
+          locationRaw: typeof position.location === "string" ? position.location : "",
           location: [position.location, position.department].filter(Boolean).join(" · ") || "地点待补充",
+          jdText: typeof position.jd_text === "string" ? position.jd_text : "",
           stage: STAGE_FROM_DB[String(application?.current_stage)] ?? "准备中",
           analysis: position.analysis_status === "ready" ? "分析已完成" : position.analysis_status === "stale" ? "分析需要更新" : "尚未生成分析",
           next: nextEvent && !Number.isNaN(nextEvent.getTime()) ? nextEvent.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : undefined,
@@ -453,22 +462,24 @@ function formatResumeDate(value: string, includeTime = false) {
     : { month: "short", day: "numeric" });
 }
 
-function ResumeView({ openUpload, versions, loading, error, preview, reparse }: { openUpload: () => void; versions: ResumeVersion[]; loading: boolean; error: string; preview: (resume: ResumeVersion) => Promise<void>; reparse: (resumeId: string) => Promise<void> }) {
+function ResumeView({ openUpload, versions, loading, error, preview, reparse, saveSections }: { openUpload: () => void; versions: ResumeVersion[]; loading: boolean; error: string; preview: (resume: ResumeVersion) => Promise<void>; reparse: (resumeId: string) => Promise<void>; saveSections: (resumeId: string, sections: ResumeSection[]) => Promise<void> }) {
   const current = versions[0];
   const sections = current?.structured_content?.sections ?? [];
   const quality = current?.structured_content?.quality;
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [reparsing, setReparsing] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [editing, setEditing] = useState(false);
   const openPreview = async (resume: ResumeVersion) => {
-    setPreviewing(resume.id); setActionError("");
+    setPreviewing(resume.id); setActionError(""); setActionMessage("");
     try { await preview(resume); }
     catch (previewError) { setActionError(previewError instanceof Error ? previewError.message : "PDF 预览失败"); }
     finally { setPreviewing(null); }
   };
   const runReparse = async () => {
     if (!current) return;
-    setReparsing(true); setActionError("");
+    setReparsing(true); setActionError(""); setActionMessage("");
     try { await reparse(current.id); }
     catch (reparseError) { setActionError(reparseError instanceof Error ? reparseError.message : "重新解析失败"); }
     finally { setReparsing(false); }
@@ -480,22 +491,25 @@ function ResumeView({ openUpload, versions, loading, error, preview, reparse }: 
         : error ? <section className="card resume-empty error"><AlertCircle size={24} /><h2>简历暂时无法读取</h2><p>{error}</p><button className="primary-button" type="button" onClick={openUpload}>重新上传</button></section>
         : !current ? <section className="card resume-empty"><span className="empty-resume-icon"><FileText size={28} /></span><h2>上传第一份母版简历</h2><p>支持 10 MB 以内的文本型 PDF。上传后会保存私有原文件、解析内容和版本记录。</p><button className="primary-button" type="button" onClick={openUpload}><Upload size={16} />选择 PDF</button></section>
         : <div className="resume-layout">
-          <section className="card content-card"><div className="card-heading"><h2>当前母版</h2><span className={`parse-quality ${quality?.level ?? "medium"}`}><CheckCircle2 size={13} />{quality?.level === "high" ? "结构识别良好" : quality?.level === "low" ? "建议检查结构" : "解析完成"}</span></div><div className="file-card"><span className="pdf-file"><FileText /></span><div><strong>{current.name}</strong><small>v{current.version} · {formatFileSize(current.file_size)} · {current.page_count || "?"} 页 · 更新于 {formatResumeDate(current.updated_at, true)}</small></div><button className="secondary-button compact" type="button" onClick={() => openPreview(current)} disabled={previewing === current.id}>{previewing === current.id ? <><LoaderCircle className="state-spinner inline" size={13} />读取中</> : "预览 PDF"}</button></div>{quality?.warnings?.length ? <div className="parse-warning"><AlertCircle size={15} /><span>{quality.warnings[0]}</span><button type="button" onClick={runReparse} disabled={reparsing}>{reparsing ? "解析中…" : "用新版重新解析"}</button></div> : current.structured_content?.parser_version !== 2 ? <div className="parse-upgrade"><Sparkles size={15} /><span>新版解析器可以更准确识别多栏简历与栏目边界。</span><button type="button" onClick={runReparse} disabled={reparsing}>{reparsing ? "解析中…" : "升级解析结果"}</button></div> : null}{actionError && <p className="form-error resume-action-error"><AlertCircle size={14} />{actionError}</p>}<div className="resume-outline">
+          <section className="card content-card"><div className="card-heading"><h2>当前母版</h2><div className="card-heading-actions"><span className={`parse-quality ${quality?.level ?? "medium"}`}><CheckCircle2 size={13} />{current.structured_content?.parser_version === 4 ? "已人工校正" : quality?.level === "high" ? "结构识别良好" : quality?.level === "low" ? "建议检查结构" : "解析完成"}</span><button className="secondary-button compact" type="button" onClick={() => setEditing(true)} disabled={!sections.length}><PencilLine size={14} />校正解析稿</button></div></div><div className="file-card"><span className="pdf-file"><FileText /></span><div><strong>{current.name}</strong><small>v{current.version} · {formatFileSize(current.file_size)} · {current.page_count || "?"} 页 · 更新于 {formatResumeDate(current.updated_at, true)}</small></div><button className="secondary-button compact" type="button" onClick={() => openPreview(current)} disabled={previewing === current.id}>{previewing === current.id ? <><LoaderCircle className="state-spinner inline" size={13} />读取中</> : "预览 PDF"}</button></div>{quality?.warnings?.length ? <div className="parse-warning"><AlertCircle size={15} /><span>{quality.warnings[0]}</span><button type="button" onClick={runReparse} disabled={reparsing}>{reparsing ? "解析中…" : "用新版重新解析"}</button></div> : current.structured_content?.parser_version !== 4 ? <div className="parse-upgrade"><PencilLine size={15} /><span>如果栏目或内容归类不准确，可以手动校正；保存后 AI 将以校正稿为准。</span><button type="button" onClick={() => setEditing(true)}>现在校正</button></div> : null}{actionError && <p className="form-error resume-action-error"><AlertCircle size={14} />{actionError}</p>}{actionMessage && <p className="resume-action-success"><CheckCircle2 size={14} />{actionMessage}</p>}<div className="resume-outline">
             {sections.slice(0, 7).map((section) => <div className="outline-row" key={section.title}><span>{section.title}</span><strong>{section.items.slice(0, 2).join(" · ") || "已识别内容"}</strong><small>{section.items.length} 行</small><ChevronRight size={15} /></div>)}
             {!sections.length && <div className="outline-placeholder"><FileCheck2 size={18} /><span>PDF 已保存，结构化内容将在下次更新时重新解析。</span></div>}
           </div></section>
           <aside className="card side-card"><div className="card-heading"><h2>版本记录</h2><span className="version-count">{versions.length} 个版本</span></div><div className="version-list">{versions.map((version, index) => <div className={`version-item ${index === 0 ? "current" : ""}`} key={version.id}><span>v{version.version}{index === 0 ? " · 当前版本" : ""}</span><strong>{version.name}</strong><small>{formatResumeDate(version.updated_at, index === 0)} · {formatFileSize(version.file_size)} · {version.page_count || "?"} 页</small><button type="button" onClick={() => openPreview(version)} disabled={previewing === version.id}>{previewing === version.id ? "读取中…" : <><span>查看 PDF</span><ArrowUpRight size={12} /></>}</button></div>)}</div><div className="privacy-note"><ShieldCheck size={17} /><p><strong>私有版本保护</strong>PDF 仅在你点击预览时通过登录态读取，不再使用容易失效的外部链接。</p></div></aside>
         </div>}
+      {editing && current && <ResumeEditorModal resume={current} close={() => setEditing(false)} save={async (nextSections) => { await saveSections(current.id, nextSections); setActionMessage("解析稿已保存，相关岗位已标记为需要重新分析"); setEditing(false); }} />}
     </>
   );
 }
 
-function PositionsView({ openNewPosition, companies, onStageUpdate }: { openNewPosition: () => void; companies: WorkspaceCompany[]; onStageUpdate?: (positionId: string, input: StageUpdateInput) => Promise<void> }) {
+function PositionsView({ openNewPosition, companies, onStageUpdate, onCompanyRename, onCompanyDelete, onPositionUpdate, onPositionDelete }: { openNewPosition: () => void; companies: WorkspaceCompany[]; onStageUpdate?: (positionId: string, input: StageUpdateInput) => Promise<void>; onCompanyRename?: (companyId: string, name: string) => Promise<void>; onCompanyDelete?: (companyId: string) => Promise<void>; onPositionUpdate?: (positionId: string, input: UpdatePositionInput) => Promise<void>; onPositionDelete?: (positionId: string) => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部类别");
   const [statusFilter, setStatusFilter] = useState("全部进度");
   const [stageOverrides, setStageOverrides] = useState<Record<string, ApplicationStage>>({});
   const [editing, setEditing] = useState<{ companyId: string; positionId: string } | null>(null);
+  const [managingCompany, setManagingCompany] = useState<string | null>(null);
+  const [managingPosition, setManagingPosition] = useState<string | null>(null);
   const positionData = useMemo(() => companies.map((company) => ({ ...company, groups: company.groups.map((group) => ({ ...group, positions: group.positions.map((position) => ({ ...position, stage: stageOverrides[position.id] ?? position.stage })) })) })), [companies, stageOverrides]);
   const filtered = useMemo(() => positionData.filter((company) => company.name.includes(query) || company.groups.some((group) => group.positions.some((position) => position.title.includes(query)))), [query, positionData]);
   const editingPosition = editing ? positionData.flatMap((company) => company.groups.flatMap((group) => group.positions)).find((position) => position.id === editing.positionId) : undefined;
@@ -526,13 +540,15 @@ function PositionsView({ openNewPosition, companies, onStageUpdate }: { openNewP
         const interviewCount = companyPositions.filter((position) => ["一面中","二面中","终面中"].includes(position.stage)).length;
         const submittedCount = companyPositions.filter((position) => !["感兴趣","准备中"].includes(position.stage)).length;
         const offerCount = companyPositions.filter((position) => ["Offer 沟通","已录用"].includes(position.stage)).length;
-        return <article className="card company-card" key={company.id}><div className="company-heading"><span className={`company-mark ${company.id}`}>{company.mark}</span><div><h2>{company.name}</h2><p>{companyPositions.length} 个岗位 · 已投递 {submittedCount} · 面试中 {interviewCount} · Offer {offerCount}</p></div><button className="icon-button" type="button" aria-label={`${company.name}更多操作`}><MoreHorizontal size={18} /></button></div><div className="category-grid">{company.groups.map((group) => {
+        return <article className="card company-card" key={company.id}><div className="company-heading"><span className={`company-mark ${company.id}`}>{company.mark}</span><div><h2>{company.name}</h2><p>{companyPositions.length} 个岗位 · 已投递 {submittedCount} · 面试中 {interviewCount} · Offer {offerCount}</p></div><button className="icon-button" type="button" onClick={() => setManagingCompany(company.id)} aria-label={`${company.name}更多操作`}><MoreHorizontal size={18} /></button></div><div className="category-grid">{company.groups.map((group) => {
           const visibleByCategory = category === "全部类别" || category === group.category;
           const groupPositions = group.positions.filter((position) => statusFilter === "全部进度" || position.stage === statusFilter || (statusFilter === "面试中" && ["一面中","二面中","终面中"].includes(position.stage)) || (statusFilter === "Offer 阶段" && ["Offer 沟通","已录用"].includes(position.stage)));
-          return <section className={`category-column ${!visibleByCategory ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{groupPositions.length ? groupPositions.map((position) => <div className="position-record" key={position.id}><a href={position.href} className="position-row"><strong>{position.title}</strong><small>{position.location}</small><span className="analysis-hint">{position.analysis}</span><ChevronRight size={14} /></a><button className={`application-stage ${stageTone(position.stage)}`} type="button" onClick={() => setEditing({ companyId: company.id, positionId: position.id })}>{position.stage}<ChevronDown size={11} /></button>{position.next && <span className="position-next"><CalendarDays size={11} />{position.next}</span>}</div>) : group.positions.length ? <p className="filtered-empty">当前筛选下无岗位</p> : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>;
+          return <section className={`category-column ${!visibleByCategory ? "dimmed" : ""}`} key={group.category}><div className="category-title"><i className={`category-dot ${group.category}`} />{group.category}<span>{group.positions.length}</span></div>{groupPositions.length ? groupPositions.map((position) => <div className="position-record" key={position.id}><a href={position.href} className="position-row"><strong>{position.title}</strong><small>{position.location}</small><span className="analysis-hint">{position.analysis}</span><ChevronRight size={14} /></a><button className="position-manage-button" type="button" onClick={() => setManagingPosition(position.id)} aria-label={`编辑${position.title}`}><MoreHorizontal size={14} /></button><button className={`application-stage ${stageTone(position.stage)}`} type="button" onClick={() => setEditing({ companyId: company.id, positionId: position.id })}>{position.stage}<ChevronDown size={11} /></button>{position.next && <span className="position-next"><CalendarDays size={11} />{position.next}</span>}</div>) : group.positions.length ? <p className="filtered-empty">当前筛选下无岗位</p> : <button className="empty-category" type="button" onClick={openNewPosition}><Plus size={13} />添加岗位</button>}</section>;
         })}</div></article>;
       })}</div>
       {editing && editingPosition && <StageModal position={editingPosition} close={() => setEditing(null)} update={updateStage} />}
+      {managingCompany && (() => { const company = positionData.find((item) => item.id === managingCompany); return company ? <CompanyManageModal company={company} close={() => setManagingCompany(null)} rename={async (name) => { await onCompanyRename?.(company.id, name); setManagingCompany(null); }} remove={async () => { await onCompanyDelete?.(company.id); setManagingCompany(null); }} /> : null; })()}
+      {managingPosition && (() => { const position = positionData.flatMap((company) => company.groups.flatMap((group) => group.positions)).find((item) => item.id === managingPosition); return position ? <PositionManageModal position={position} close={() => setManagingPosition(null)} save={async (input) => { await onPositionUpdate?.(position.id, input); setManagingPosition(null); }} remove={async () => { await onPositionDelete?.(position.id); setManagingPosition(null); }} /> : null; })()}
     </>
   );
 }
@@ -698,6 +714,35 @@ function SourcePanel({ jdQuote = "", resumeQuote = "", resumeQuotes = [] }: { jd
   return <aside className="card source-panel"><div className="source-heading"><div><h2>原文引用</h2><p>所有判断都能定位来源</p></div><FileCheck2 size={20} /></div><section><strong>JD 原文</strong><p>{jdQuote ? <mark>{jdQuote}</mark> : "暂无可定位的 JD 原文"}</p></section><section><strong>简历原文{quotes.length > 1 ? ` · ${quotes.length} 条` : ""}</strong>{quotes.length ? quotes.map((quote, index) => <p key={`${quote}-${index}`}><mark>{quote}</mark></p>) : <p>该要求目前没有可引用的简历证据</p>}</section><a className="text-button" href="/resume">查看母版简历 <ArrowUpRight size={14} /></a></aside>;
 }
 
+function ResumeEditorModal({ resume, close, save }: { resume: ResumeVersion; close: () => void; save: (sections: ResumeSection[]) => Promise<void> }) {
+  const [sections, setSections] = useState<ResumeSection[]>(() => (resume.structured_content?.sections ?? []).map((section) => ({ title: section.title, items: [...section.items] })));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const update = (index: number, changes: Partial<ResumeSection>) => setSections((items) => items.map((section, sectionIndex) => sectionIndex === index ? { ...section, ...changes } : section));
+  const move = (index: number, direction: -1 | 1) => setSections((items) => {
+    const target = index + direction;
+    if (target < 0 || target >= items.length) return items;
+    const next = [...items];
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
+  });
+  const remove = (index: number) => setSections((items) => items.filter((_, sectionIndex) => sectionIndex !== index));
+  const submit = async () => {
+    const normalized = sections.map((section) => ({
+      title: section.title.trim(),
+      items: section.items.map((item) => item.trim()).filter(Boolean),
+    })).filter((section) => section.title && section.items.length);
+    if (!normalized.length) { setError("请至少保留一个包含内容的栏目"); return; }
+    if (normalized.some((section) => section.title.length > 40)) { setError("栏目名称不能超过 40 个字"); return; }
+    setSaving(true); setError("");
+    try { await save(normalized); }
+    catch (saveError) { setError(saveError instanceof Error ? saveError.message : "解析稿保存失败"); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="modal-backdrop resume-editor-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !saving && close()}><section className="modal-card resume-editor-modal" role="dialog" aria-modal="true" aria-labelledby="resume-editor-title"><div className="modal-heading"><div><span className="modal-icon"><PencilLine /></span><div><h2 id="resume-editor-title">校正简历解析稿</h2><p>保存后，证据地图和面试分析都会以这里的内容为准</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭" disabled={saving}><X size={18} /></button></div><div className="resume-editor-notice"><ShieldCheck size={16} /><p><strong>只校正真实内容</strong>你可以调整栏目、顺序和换行，但不要为了匹配岗位添加不存在的经历或数据。原始 PDF 不会被修改。</p></div><div className="resume-editor-sections">{sections.map((section, index) => <section className="resume-editor-section" key={index}><header><input aria-label={`第 ${index + 1} 个栏目名称`} value={section.title} onChange={(event) => update(index, { title: event.target.value })} placeholder="栏目名称" /><div><button type="button" onClick={() => move(index, -1)} disabled={index === 0 || saving} aria-label="上移栏目"><MoveUp size={15} /></button><button type="button" onClick={() => move(index, 1)} disabled={index === sections.length - 1 || saving} aria-label="下移栏目"><MoveDown size={15} /></button><button className="danger" type="button" onClick={() => remove(index)} disabled={sections.length === 1 || saving} aria-label="删除栏目"><Trash2 size={15} /></button></div></header><textarea aria-label={`${section.title || `第 ${index + 1} 个栏目`}内容`} value={section.items.join("\n")} onChange={(event) => update(index, { items: event.target.value.split(/\r?\n/) })} rows={Math.min(10, Math.max(4, section.items.length + 1))} placeholder="每行填写一条真实经历或信息" /><small>{section.items.filter((item) => item.trim()).length} 行 · 每行会作为一条可引用的简历证据</small></section>)}</div><button className="resume-add-section" type="button" onClick={() => setSections((items) => [...items, { title: "其他信息", items: [""] }])} disabled={saving || sections.length >= 16}><Plus size={15} />添加栏目</button>{error && <p className="form-error resume-editor-error"><AlertCircle size={14} />{error}</p>}<div className="modal-actions"><button className="secondary-button" type="button" onClick={close} disabled={saving}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving}>{saving ? <><LoaderCircle className="state-spinner inline" size={14} />保存中</> : <><Check size={14} />保存校正稿</>}</button></div></section></div>;
+}
+
 function UploadModal({ close, upload }: { close: () => void; upload: (file: File) => Promise<{ duplicate?: boolean }> }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -728,6 +773,49 @@ function UploadModal({ close, upload }: { close: () => void; upload: (file: File
 
 function PdfPreviewModal({ preview, close }: { preview: { url: string; name: string }; close: () => void }) {
   return <div className="pdf-preview-backdrop" role="presentation"><section className="pdf-preview-card" role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title"><header><div><span className="pdf-mini-icon"><FileText size={17} /></span><div><h2 id="pdf-preview-title">{preview.name}</h2><p>私有 PDF 预览</p></div></div><div><a className="secondary-button compact" href={preview.url} download={preview.name}>下载原文件</a><button className="icon-button" type="button" onClick={close} aria-label="关闭预览"><X size={19} /></button></div></header><iframe src={preview.url} title={`${preview.name} PDF 预览`} /></section></div>;
+}
+
+function CompanyManageModal({ company, close, rename, remove }: { company: WorkspaceCompany; close: () => void; rename: (name: string) => Promise<void>; remove: () => Promise<void> }) {
+  const [name, setName] = useState(company.name);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const positionCount = company.groups.reduce((sum, group) => sum + group.positions.length, 0);
+  const submit = async () => {
+    if (!name.trim()) { setError("请输入公司名称"); return; }
+    setSaving(true); setError("");
+    try { await rename(name.trim()); }
+    catch (submitError) { setError(submitError instanceof Error ? submitError.message : "公司信息保存失败"); setSaving(false); }
+  };
+  const confirmDelete = async () => {
+    setSaving(true); setError("");
+    try { await remove(); }
+    catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "公司删除失败"); setSaving(false); }
+  };
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !saving && close()}><section className="modal-card manage-modal" role="dialog" aria-modal="true" aria-labelledby="company-manage-title"><div className="modal-heading"><div><span className="modal-icon gold"><BriefcaseBusiness /></span><div><h2 id="company-manage-title">管理公司</h2><p>{positionCount} 个岗位归属于这家公司</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭" disabled={saving}><X size={18} /></button></div>{confirmingDelete ? <div className="danger-confirm"><span><AlertCircle size={21} /></span><h3>删除“{company.name}”？</h3><p>将同时删除其中 {positionCount} 个岗位、求职进度和全部分析结果。此操作无法撤销。</p>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}<div><button className="secondary-button" type="button" onClick={() => setConfirmingDelete(false)} disabled={saving}>返回</button><button className="danger-button" type="button" onClick={confirmDelete} disabled={saving}>{saving ? "删除中…" : `确认删除 ${positionCount} 个岗位`}</button></div></div> : <><div className="form-grid manage-form"><label><span>公司名称</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} /></label>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}<button className="destructive-link" type="button" onClick={() => setConfirmingDelete(true)}><Trash2 size={14} />删除公司及其岗位</button></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close} disabled={saving}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving || name.trim() === company.name}>{saving ? "保存中…" : "保存名称"}</button></div></>}</section></div>;
+}
+
+function PositionManageModal({ position, close, save, remove }: { position: DemoPosition; close: () => void; save: (input: UpdatePositionInput) => Promise<void>; remove: () => Promise<void> }) {
+  const [title, setTitle] = useState(position.title);
+  const [category, setCategory] = useState<Category>(position.category ?? "产品");
+  const [department, setDepartment] = useState(position.department ?? "");
+  const [location, setLocation] = useState(position.locationRaw ?? "");
+  const [jdText, setJdText] = useState(position.jdText ?? "");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async () => {
+    if (!title.trim() || jdText.trim().length < 80) { setError("请填写岗位名称，并保留至少 80 字的完整 JD"); return; }
+    setSaving(true); setError("");
+    try { await save({ title: title.trim(), category, department: department.trim(), location: location.trim(), jdText: jdText.trim() }); }
+    catch (submitError) { setError(submitError instanceof Error ? submitError.message : "岗位信息保存失败"); setSaving(false); }
+  };
+  const confirmDelete = async () => {
+    setSaving(true); setError("");
+    try { await remove(); }
+    catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "岗位删除失败"); setSaving(false); }
+  };
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !saving && close()}><section className="modal-card wide manage-modal" role="dialog" aria-modal="true" aria-labelledby="position-manage-title"><div className="modal-heading"><div><span className="modal-icon gold"><BriefcaseBusiness /></span><div><h2 id="position-manage-title">{confirmingDelete ? "确认删除岗位" : "编辑目标岗位"}</h2><p>{position.title}</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭" disabled={saving}><X size={18} /></button></div>{confirmingDelete ? <div className="danger-confirm"><span><AlertCircle size={21} /></span><h3>删除“{position.title}”？</h3><p>这份 JD、求职进度、证据地图、定制简历和面试追问都会被删除，无法撤销。</p>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}<div><button className="secondary-button" type="button" onClick={() => setConfirmingDelete(false)} disabled={saving}>返回编辑</button><button className="danger-button" type="button" onClick={confirmDelete} disabled={saving}>{saving ? "删除中…" : "确认删除岗位"}</button></div></div> : <><div className="form-grid"><label><span>岗位名称</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label><fieldset><legend>岗位类别</legend><div className="category-picker">{(["技术","产品","运营","市场"] as Category[]).map((item) => <button className={category === item ? "active" : ""} type="button" onClick={() => setCategory(item)} key={item}>{item}</button>)}</div></fieldset><div className="form-two"><label><span>部门（选填）</span><input value={department} onChange={(event) => setDepartment(event.target.value)} /></label><label><span>地点（选填）</span><input value={location} onChange={(event) => setLocation(event.target.value)} /></label></div><label><span>岗位 JD</span><textarea value={jdText} onChange={(event) => setJdText(event.target.value)} rows={8} /></label>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}<button className="destructive-link" type="button" onClick={() => setConfirmingDelete(true)}><Trash2 size={14} />删除这个岗位</button></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={close} disabled={saving}>取消</button><button className="primary-button" type="button" onClick={submit} disabled={saving}>{saving ? "保存中…" : "保存岗位"}</button></div></>}</section></div>;
 }
 
 function StageModal({ position, close, update }: { position: DemoPosition; close: () => void; update: (input: StageUpdateInput) => Promise<void> }) {
@@ -887,6 +975,26 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
     await loadWorkspace();
   };
 
+  const renameCompany = async (companyId: string, name: string) => {
+    await authenticatedFetch(`/api/companies/${companyId}`, { method: "PATCH", body: JSON.stringify({ name }) });
+    await loadWorkspace();
+  };
+
+  const deleteCompany = async (companyId: string) => {
+    await authenticatedFetch(`/api/companies/${companyId}`, { method: "DELETE" });
+    await loadWorkspace();
+  };
+
+  const updatePosition = async (positionId: string, input: UpdatePositionInput) => {
+    await authenticatedFetch(`/api/positions/${positionId}`, { method: "PATCH", body: JSON.stringify({ title: input.title, category: CATEGORY_TO_DB[input.category], department: input.department, location: input.location, jd_text: input.jdText }) });
+    await loadWorkspace();
+  };
+
+  const deletePosition = async (positionId: string) => {
+    await authenticatedFetch(`/api/positions/${positionId}`, { method: "DELETE" });
+    await loadWorkspace();
+  };
+
   const uploadResume = async (file: File) => {
     if (!session?.access_token) throw new Error("登录状态已失效，请重新登录");
     const form = new FormData();
@@ -917,6 +1025,11 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
 
   const reparseResume = async (resumeId: string) => {
     await authenticatedFetch(`/api/resumes/${resumeId}/reparse`, { method: "POST", body: JSON.stringify({}) });
+    await Promise.all([loadResumes(session), loadWorkspace(session)]);
+  };
+
+  const saveResumeSections = async (resumeId: string, sections: ResumeSection[]) => {
+    await authenticatedFetch(`/api/resumes/${resumeId}`, { method: "PATCH", body: JSON.stringify({ sections }) });
     await Promise.all([loadResumes(session), loadWorkspace(session)]);
   };
 
@@ -966,5 +1079,5 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
 }

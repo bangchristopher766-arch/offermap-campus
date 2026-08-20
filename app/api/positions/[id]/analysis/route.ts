@@ -129,7 +129,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const category = positionCategorySchema.parse(position.category);
     const aiConfiguration = getAiConfiguration();
-    const inputHash = await sha256(`${PROMPT_VERSION}\n${aiConfiguration.provider}\n${aiConfiguration.model}\n${resume.content_hash}\n${position.jd_text}`);
+    const inputHash = await sha256(`${PROMPT_VERSION}\n${aiConfiguration.provider}\n${aiConfiguration.model}\n${resume.content_hash}\n${resume.parsed_text}\n${position.jd_text}`);
     const { data: cachedRun } = await supabase.from("ai_runs").select("id,model,duration_ms").eq("position_id", positionId).eq("task", "evidence").eq("input_hash", inputHash).eq("status", "ready").maybeSingle();
     const currentEvidence = await loadEvidence(supabase, positionId);
     if (cachedRun && currentEvidence.length && !body.force) {
