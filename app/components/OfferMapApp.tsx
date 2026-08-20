@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   MoveDown,
   MoveUp,
+  PanelRightOpen,
   PencilLine,
   Plus,
   RefreshCw,
@@ -64,6 +65,7 @@ type ResumeVersion = {
   structured_content: { parser_version?: number; sections?: ResumeSection[]; quality?: ResumeParseQuality } | null;
   created_at: string;
   updated_at: string;
+  is_current?: boolean;
 };
 type AnalysisEvidenceRelation = {
   status: "strong" | "partial" | "missing";
@@ -110,6 +112,7 @@ type AnalysisPosition = {
   department: string;
   location: string;
   job_code: string;
+  jd_text: string;
   analysis_status: "pending" | "processing" | "ready" | "stale" | "failed";
   analyzed_resume_version?: number | null;
   companies?: { name: string } | Array<{ name: string }> | null;
@@ -462,8 +465,8 @@ function formatResumeDate(value: string, includeTime = false) {
     : { month: "short", day: "numeric" });
 }
 
-function ResumeView({ openUpload, versions, loading, error, preview, reparse, saveSections }: { openUpload: () => void; versions: ResumeVersion[]; loading: boolean; error: string; preview: (resume: ResumeVersion) => Promise<void>; reparse: (resumeId: string) => Promise<void>; saveSections: (resumeId: string, sections: ResumeSection[]) => Promise<void> }) {
-  const current = versions[0];
+function ResumeView({ openUpload, versions, loading, error, preview, reparse, saveSections, activateVersion, deleteVersion }: { openUpload: () => void; versions: ResumeVersion[]; loading: boolean; error: string; preview: (resume: ResumeVersion) => Promise<void>; reparse: (resumeId: string) => Promise<void>; saveSections: (resumeId: string, sections: ResumeSection[]) => Promise<void>; activateVersion: (resumeId: string) => Promise<void>; deleteVersion: (resumeId: string) => Promise<void> }) {
+  const current = versions.find((version) => version.is_current) ?? versions[0];
   const sections = current?.structured_content?.sections ?? [];
   const quality = current?.structured_content?.quality;
   const [previewing, setPreviewing] = useState<string | null>(null);
@@ -471,6 +474,8 @@ function ResumeView({ openUpload, versions, loading, error, preview, reparse, sa
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [editing, setEditing] = useState(false);
+  const [activating, setActivating] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<ResumeVersion | null>(null);
   const openPreview = async (resume: ResumeVersion) => {
     setPreviewing(resume.id); setActionError(""); setActionMessage("");
     try { await preview(resume); }
@@ -484,6 +489,12 @@ function ResumeView({ openUpload, versions, loading, error, preview, reparse, sa
     catch (reparseError) { setActionError(reparseError instanceof Error ? reparseError.message : "重新解析失败"); }
     finally { setReparsing(false); }
   };
+  const activate = async (resume: ResumeVersion) => {
+    setActivating(resume.id); setActionError(""); setActionMessage("");
+    try { await activateVersion(resume.id); setActionMessage(`已将 v${resume.version} 设为当前母版，相关岗位需要重新分析`); }
+    catch (activateError) { setActionError(activateError instanceof Error ? activateError.message : "切换母版失败"); }
+    finally { setActivating(null); }
+  };
   return (
     <>
       <PageHeader eyebrow="独立资料库" title="我的简历" description="每次上传都会保留一个私有 PDF 版本。岗位定制建议只生成副本，不会覆盖母版。" action={<button className="primary-button" type="button" onClick={openUpload}><Upload size={16} />{current ? "更新简历" : "上传简历"}</button>} />
@@ -495,9 +506,10 @@ function ResumeView({ openUpload, versions, loading, error, preview, reparse, sa
             {sections.slice(0, 7).map((section) => <div className="outline-row" key={section.title}><span>{section.title}</span><strong>{section.items.slice(0, 2).join(" · ") || "已识别内容"}</strong><small>{section.items.length} 行</small><ChevronRight size={15} /></div>)}
             {!sections.length && <div className="outline-placeholder"><FileCheck2 size={18} /><span>PDF 已保存，结构化内容将在下次更新时重新解析。</span></div>}
           </div></section>
-          <aside className="card side-card"><div className="card-heading"><h2>版本记录</h2><span className="version-count">{versions.length} 个版本</span></div><div className="version-list">{versions.map((version, index) => <div className={`version-item ${index === 0 ? "current" : ""}`} key={version.id}><span>v{version.version}{index === 0 ? " · 当前版本" : ""}</span><strong>{version.name}</strong><small>{formatResumeDate(version.updated_at, index === 0)} · {formatFileSize(version.file_size)} · {version.page_count || "?"} 页</small><button type="button" onClick={() => openPreview(version)} disabled={previewing === version.id}>{previewing === version.id ? "读取中…" : <><span>查看 PDF</span><ArrowUpRight size={12} /></>}</button></div>)}</div><div className="privacy-note"><ShieldCheck size={17} /><p><strong>私有版本保护</strong>PDF 仅在你点击预览时通过登录态读取，不再使用容易失效的外部链接。</p></div></aside>
+          <aside className="card side-card"><div className="card-heading"><h2>版本记录</h2><span className="version-count">{versions.length} 个版本</span></div><div className="version-list">{versions.map((version) => { const isCurrent = version.id === current.id; return <div className={`version-item ${isCurrent ? "current" : ""}`} key={version.id}><span>v{version.version}{isCurrent ? " · 当前母版" : ""}</span><strong>{version.name}</strong><small>{formatResumeDate(version.updated_at, isCurrent)} · {formatFileSize(version.file_size)} · {version.page_count || "?"} 页</small><div className="version-item-actions"><button type="button" onClick={() => openPreview(version)} disabled={previewing === version.id}>{previewing === version.id ? "读取中…" : <><span>查看 PDF</span><ArrowUpRight size={12} /></>}</button>{!isCurrent && <button type="button" onClick={() => void activate(version)} disabled={activating === version.id}>{activating === version.id ? "切换中…" : "设为母版"}</button>}<button className="delete-version" type="button" onClick={() => setDeleting(version)} aria-label={`删除 v${version.version}`}><Trash2 size={12} /></button></div></div>; })}</div><div className="privacy-note"><ShieldCheck size={17} /><p><strong>私有版本保护</strong>当前母版会用于所有岗位分析；切换版本不会删除原文件。</p></div></aside>
         </div>}
       {editing && current && <ResumeEditorModal resume={current} close={() => setEditing(false)} save={async (nextSections) => { await saveSections(current.id, nextSections); setActionMessage("解析稿已保存，相关岗位已标记为需要重新分析"); setEditing(false); }} />}
+      {deleting && <ResumeVersionDeleteModal resume={deleting} totalVersions={versions.length} close={() => setDeleting(null)} remove={async () => { await deleteVersion(deleting.id); setActionMessage(`v${deleting.version} 已删除${deleting.id === current.id && versions.length > 1 ? "，已自动切换到剩余的最新版本" : ""}`); setDeleting(null); }} />}
     </>
   );
 }
@@ -591,6 +603,7 @@ function MapCompany({ className, mark, name, subtitle, tags, stage, status, tone
 }
 
 function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, error, run, toggleSuggestion, live }: { tab: AnalysisTab; setTab: (tab: AnalysisTab) => void; data: PositionAnalysisData | null; loading: boolean; runningKind: AnalysisTab | null; runningPhase: AnalysisRunPhase; error: string; run: (kind: AnalysisTab) => Promise<void>; toggleSuggestion: (id: string, accepted: boolean) => Promise<void>; live: boolean }) {
+  const [jdOpen, setJdOpen] = useState(false);
   const position = data?.position;
   const companyRelation = position?.companies;
   const companyName = Array.isArray(companyRelation) ? companyRelation[0]?.name : companyRelation?.name;
@@ -604,7 +617,7 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
   const actionLabel = running ? "正在分析" : hasEvidence ? "重新生成" : "开始分析";
   return (
     <>
-      <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">{companyName ?? (live ? "目标岗位" : "字节跳动")}</a><ChevronRight size={13} /><span>{live ? categoryName : "产品"}</span><ChevronRight size={13} /><span>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</span></div><h1>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</h1><p>{position ? [position.location, position.department, position.job_code].filter(Boolean).join(" · ") || "岗位信息已保存" : live ? "正在读取岗位与简历数据" : "北京 · Flow 产品团队 · JD-2026-0821"}</p></div>{(!live || position) && <button className="primary-button" type="button" onClick={() => void run("evidence")} disabled={running || loading}>{runningKind === "evidence" ? <LoaderCircle className="state-spinner inline" size={15} /> : <RefreshCw size={15} />}{actionLabel}</button>}</div>
+      <div className="analysis-heading"><div><div className="breadcrumb"><a href="/positions">{companyName ?? (live ? "目标岗位" : "字节跳动")}</a><ChevronRight size={13} /><span>{live ? categoryName : "产品"}</span><ChevronRight size={13} /><span>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</span></div><h1>{position?.title ?? (live ? "岗位分析" : "AI 产品经理实习生")}</h1><p>{position ? [position.location, position.department, position.job_code].filter(Boolean).join(" · ") || "岗位信息已保存" : live ? "正在读取岗位与简历数据" : "北京 · Flow 产品团队 · JD-2026-0821"}</p></div>{(!live || position) && <div className="analysis-heading-actions"><button className="secondary-button" type="button" onClick={() => setJdOpen(true)}><PanelRightOpen size={15} />岗位信息与 JD</button><button className="primary-button" type="button" onClick={() => void run("evidence")} disabled={running || loading}>{runningKind === "evidence" ? <LoaderCircle className="state-spinner inline" size={15} /> : <RefreshCw size={15} />}{actionLabel}</button></div>}</div>
       {loading && <section className="card analysis-state-card"><LoaderCircle className="state-spinner" size={28} /><div><strong>正在读取岗位分析</strong><p>正在同步 JD、简历版本和已保存的证据。</p></div></section>}
       {error && <section className="analysis-inline-error"><AlertCircle size={16} /><span>{error}</span>{position && !running && <button type="button" onClick={() => void run(tab)}>重试分析</button>}</section>}
       {position && <section className="card application-progress"><div className="progress-heading"><div><span>求职进度</span><strong>{nextEvent && !Number.isNaN(nextEvent.getTime()) ? `下一安排：${nextEvent.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}${application?.next_event_type ? ` · ${application.next_event_type}` : ""}` : "还没有设置下一安排"}</strong></div><span className={`application-stage ${stageTone(stage)}`}>{stage}</span></div><div className={`analysis-run-note ${position.analysis_status}`}><Sparkles size={14} /><span><strong>分析状态：</strong>{running || position.analysis_status === "processing" ? "AI 正在拆解能力要求、召回候选经历并进行深度判断。" : position.analysis_status === "ready" ? `${modelLabel} 证据地图已保存${position.analyzed_resume_version ? `，对应母版简历 v${position.analyzed_resume_version}` : ""}。` : position.analysis_status === "stale" ? "简历或 JD 已更新，需要重新生成证据地图。" : position.analysis_status === "failed" ? "上次分析没有通过校验，可以重新生成。" : "尚未生成证据地图。"}</span></div></section>}
@@ -614,8 +627,21 @@ function AnalysisView({ tab, setTab, data, loading, runningKind, runningPhase, e
       <div className="analysis-tabs" role="tablist">{([['evidence','证据地图'],['resume','定制简历'],['interview','面试追问地图']] as Array<[AnalysisTab,string]>).map(([key,label]) => <button type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>)}</div>
       {tab === "evidence" && <EvidencePanel items={live ? data?.evidence : undefined} />}{tab === "resume" && (live ? data?.suggestions?.length ? <ResumeSuggestionsPanel items={data.suggestions} resume={data.resume} onToggle={toggleSuggestion} onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : data?.meta?.resumeCompleted ? <NoResumeChanges onRegenerate={() => run("resume")} running={runningKind === "resume"} /> : <PendingAnalysisModule title="生成岗位定制版简历" body="保留母版简历的完整结构，只对与 JD 最相关的经历做有针对性的重新表达；同一条经历只改写一次。" action="生成定制简历" onAction={() => run("resume")} running={runningKind === "resume"} /> : <ResumeSuggestionsPanel />)}{tab === "interview" && (live ? data?.questions?.length ? <InterviewPanel items={data.questions} evidence={data.evidence} onRegenerate={() => run("interview")} running={runningKind === "interview"} /> : <PendingAnalysisModule title="生成面试追问地图" body="从高优先级 JD、突出经历和能力缺口生成主问题、递进追问、回答结构与风险提示。" action="生成追问地图" onAction={() => run("interview")} running={runningKind === "interview"} /> : <InterviewPanel />)}
       </>}
+      {jdOpen && <JobDetailDrawer position={position} companyName={companyName ?? "字节跳动"} categoryName={live ? categoryName : "产品"} close={() => setJdOpen(false)} />}
     </>
   );
+}
+
+function JobDetailDrawer({ position, companyName, categoryName, close }: { position?: AnalysisPosition; companyName: string; categoryName: string; close: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const title = position?.title ?? "AI 产品经理实习生";
+  const jd = position?.jd_text ?? "岗位职责：负责 AI 产品需求分析、方案设计与跨团队推进；结合用户反馈和数据持续优化产品体验。\n\n岗位要求：具备良好的用户洞察、产品设计和项目协作能力，有 AI 产品或大模型应用项目经验优先。";
+  const copyJd = async () => {
+    await navigator.clipboard.writeText(jd);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+  return <div className="jd-drawer-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="jd-drawer" role="dialog" aria-modal="true" aria-labelledby="jd-drawer-title"><header><div><span className="jd-drawer-icon"><BriefcaseBusiness size={19} /></span><div><p>{companyName} · {categoryName}</p><h2 id="jd-drawer-title">{title}</h2></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭岗位信息"><X size={19} /></button></header><div className="jd-drawer-body"><section className="jd-meta-grid"><div><span>公司</span><strong>{companyName}</strong></div><div><span>岗位类别</span><strong>{categoryName}</strong></div><div><span>工作地点</span><strong>{position?.location || "未填写"}</strong></div><div><span>部门</span><strong>{position?.department || "未填写"}</strong></div>{position?.job_code && <div><span>岗位编号</span><strong>{position.job_code}</strong></div>}</section><section className="jd-full-text"><div><h3>完整 JD 原文</h3><span>{jd.length} 字</span></div><pre>{jd}</pre></section></div><footer><a className="secondary-button" href="/positions"><PencilLine size={14} />前往岗位管理</a><button className="primary-button" type="button" onClick={() => void copyJd()}><Copy size={14} />{copied ? "已复制" : "复制完整 JD"}</button></footer></aside></div>;
 }
 
 function firstRelation(item: AnalysisEvidenceItem) {
@@ -712,6 +738,17 @@ function InterviewPanel({ items, evidence: evidenceItems = [], onRegenerate, run
 function SourcePanel({ jdQuote = "", resumeQuote = "", resumeQuotes = [] }: { jdQuote?: string; resumeQuote?: string; resumeQuotes?: string[] }) {
   const quotes = resumeQuotes.length ? resumeQuotes : resumeQuote ? [resumeQuote] : [];
   return <aside className="card source-panel"><div className="source-heading"><div><h2>原文引用</h2><p>所有判断都能定位来源</p></div><FileCheck2 size={20} /></div><section><strong>JD 原文</strong><p>{jdQuote ? <mark>{jdQuote}</mark> : "暂无可定位的 JD 原文"}</p></section><section><strong>简历原文{quotes.length > 1 ? ` · ${quotes.length} 条` : ""}</strong>{quotes.length ? quotes.map((quote, index) => <p key={`${quote}-${index}`}><mark>{quote}</mark></p>) : <p>该要求目前没有可引用的简历证据</p>}</section><a className="text-button" href="/resume">查看母版简历 <ArrowUpRight size={14} /></a></aside>;
+}
+
+function ResumeVersionDeleteModal({ resume, totalVersions, close, remove }: { resume: ResumeVersion; totalVersions: number; close: () => void; remove: () => Promise<void> }) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async () => {
+    setDeleting(true); setError("");
+    try { await remove(); }
+    catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "简历版本删除失败"); setDeleting(false); }
+  };
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !deleting && close()}><section className="modal-card manage-modal" role="dialog" aria-modal="true" aria-labelledby="resume-delete-title"><div className="modal-heading"><div><span className="modal-icon danger-icon"><Trash2 /></span><div><h2 id="resume-delete-title">删除简历 v{resume.version}</h2><p>{resume.name}</p></div></div><button className="icon-button" type="button" onClick={close} aria-label="关闭" disabled={deleting}><X size={18} /></button></div><div className="danger-confirm compact-confirm"><span><AlertCircle size={21} /></span><h3>{resume.is_current ? "这是当前使用的母版" : "确认删除这个历史版本？"}</h3><p>{resume.is_current ? totalVersions > 1 ? "删除后会自动使用剩余的最新版本，全部岗位分析将标记为需要重新生成。" : "删除后将暂时没有母版简历，岗位与 JD 会保留，但需要重新上传简历才能分析。" : "将删除该版本的 PDF、解析稿以及与它直接关联的证据；其他简历版本不会受到影响。"}</p>{error && <p className="form-error"><AlertCircle size={14} />{error}</p>}<div><button className="secondary-button" type="button" onClick={close} disabled={deleting}>取消</button><button className="danger-button" type="button" onClick={submit} disabled={deleting}>{deleting ? "删除中…" : "确认删除版本"}</button></div></div></section></div>;
 }
 
 function ResumeEditorModal({ resume, close, save }: { resume: ResumeVersion; close: () => void; save: (sections: ResumeSection[]) => Promise<void> }) {
@@ -1033,6 +1070,16 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
     await Promise.all([loadResumes(session), loadWorkspace(session)]);
   };
 
+  const activateResumeVersion = async (resumeId: string) => {
+    await authenticatedFetch(`/api/resumes/${resumeId}`, { method: "PUT" });
+    await Promise.all([loadResumes(session), loadWorkspace(session)]);
+  };
+
+  const deleteResumeVersion = async (resumeId: string) => {
+    await authenticatedFetch(`/api/resumes/${resumeId}`, { method: "DELETE" });
+    await Promise.all([loadResumes(session), loadWorkspace(session)]);
+  };
+
   const runPositionAnalysis = async (kind: AnalysisTab) => {
     if (!positionId) return;
     setAnalysisRunningKind(kind); setAnalysisRunningPhase(kind === "evidence" ? null : "deep"); setAnalysisTab(kind); setAnalysisError("");
@@ -1079,5 +1126,5 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、母版简历与 AI 深度分析结果会保存到你的账号" : "简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} activateVersion={configured ? activateResumeVersion : async () => {}} deleteVersion={configured ? deleteResumeVersion : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
 }

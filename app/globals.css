@@ -224,8 +224,11 @@ a { color: inherit; text-decoration: none; }
 .version-item span { color: var(--blue); font-size: 11px; }
 .version-item strong { margin-top: 6px; font-size: 13px; font-weight: 500; }
 .version-item small { margin-top: 5px; color: var(--tertiary); font-size: 10px; }
-.version-item > a, .version-item > button { width: max-content; margin-top: 8px; padding: 0; border: 0; display: inline-flex; align-items: center; gap: 4px; color: var(--blue); background: transparent; font-size: 10px; cursor: pointer; }
-.version-item > button:disabled { opacity: .55; cursor: wait; }
+.version-item-actions { min-height: 24px; margin-top: 8px; display: flex; align-items: center; gap: 12px; }
+.version-item-actions button { width: max-content; padding: 0; border: 0; display: inline-flex; align-items: center; gap: 4px; color: var(--blue); background: transparent; font-size: 10px; cursor: pointer; }
+.version-item-actions button:disabled { opacity: .55; cursor: wait; }
+.version-item-actions button.delete-version { margin-left: auto; color: #b8b8bd; }
+.version-item-actions button.delete-version:hover { color: #c4433b; }
 .privacy-note { display: flex; gap: 9px; margin-top: 20px; padding: 13px; border-radius: 14px; color: #287450; background: #eef8f1; }
 .privacy-note svg { flex: 0 0 auto; margin-top: 1px; }
 .privacy-note p { margin: 0; font-size: 11px; line-height: 1.55; }
@@ -345,6 +348,7 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .analysis-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; }
 .analysis-heading h1 { font-size: clamp(30px, 3.3vw, 46px); }
 .analysis-heading > div > p { margin: 10px 0 0; color: var(--tertiary); font-size: 12px; }
+.analysis-heading-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 9px; }
 .breadcrumb { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; color: var(--tertiary); font-size: 11px; }
 .breadcrumb a { color: var(--blue); }
 .application-progress { position: relative; margin-top: 24px; padding: 19px 21px; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,.045); }
@@ -430,6 +434,28 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .source-panel section p + p { margin-top: 8px; }
 .source-panel mark { padding: 1px 2px; border-radius: 3px; color: inherit; background: #fff0ad; }
 .source-panel > .text-button { margin-top: 13px; }
+.jd-drawer-backdrop { position: fixed; inset: 0; z-index: 130; display: flex; justify-content: flex-end; background: rgba(20,20,22,.3); backdrop-filter: blur(8px); animation: fade-in .18s ease; }
+.jd-drawer { width: min(610px, 94vw); height: 100%; display: grid; grid-template-rows: auto minmax(0,1fr) auto; background: #f8f8fa; box-shadow: -24px 0 70px rgba(0,0,0,.16); animation: drawer-in .24s cubic-bezier(.2,.8,.2,1); }
+.jd-drawer > header { min-height: 92px; padding: 20px 24px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 18px; background: rgba(255,255,255,.92); }
+.jd-drawer > header > div { min-width: 0; display: flex; align-items: center; gap: 13px; }
+.jd-drawer-icon { width: 43px; height: 43px; flex: 0 0 auto; border-radius: 13px; display: grid; place-items: center; color: #8a5800; background: #fff1cf; }
+.jd-drawer header p { margin: 0 0 4px; color: var(--tertiary); font-size: 10px; }
+.jd-drawer header h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; font-weight: 600; }
+.jd-drawer-body { overflow-y: auto; padding: 22px 24px 28px; }
+.jd-meta-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.jd-meta-grid > div { min-height: 72px; padding: 14px; border: 1px solid rgba(0,0,0,.07); border-radius: 14px; background: white; }
+.jd-meta-grid span, .jd-meta-grid strong { display: block; }
+.jd-meta-grid span { color: var(--tertiary); font-size: 9px; }
+.jd-meta-grid strong { margin-top: 7px; font-size: 12px; font-weight: 550; }
+.jd-full-text { margin-top: 18px; padding: 20px; border: 1px solid rgba(0,0,0,.07); border-radius: 18px; background: white; }
+.jd-full-text > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.jd-full-text h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.jd-full-text > div span { color: var(--tertiary); font-size: 9px; }
+.jd-full-text pre { margin: 16px 0 0; white-space: pre-wrap; word-break: break-word; color: #3a3a3d; font: inherit; font-size: 12px; line-height: 1.8; }
+.jd-drawer > footer { min-height: 76px; padding: 15px 24px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: flex-end; gap: 9px; background: white; }
+.danger-icon { color: #c4433b; background: #fff0ee; }
+.compact-confirm { padding-top: 28px; }
+@keyframes drawer-in { from { transform: translateX(28px); opacity: .75; } }
 .tailored-resume { overflow: hidden; }
 .tailored-resume-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px; border-bottom: 1px solid var(--line); background: linear-gradient(135deg, #f7faff 0%, #fff 64%); }
 .tailored-resume-head span { color: var(--blue); font-size: 10px; font-weight: 600; }
@@ -612,6 +638,8 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
   .main-nav a { flex: 1; white-space: nowrap; }
   .page-container { width: calc(100% - 24px); min-height: calc(100vh - 112px); padding: 35px 0 90px; }
   .page-header, .analysis-heading { align-items: flex-start; flex-direction: column; }
+  .analysis-heading-actions { width: 100%; }
+  .analysis-heading-actions > button { flex: 1; }
   .page-header h1 { font-size: 38px; }
   .entry-grid, .recent-grid { grid-template-columns: 1fr; gap: 12px; }
   .next-grid { grid-template-columns: 1fr; }
@@ -647,6 +675,8 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
   .tailored-line { grid-template-columns: 14px 1fr; }
   .tailored-line em { grid-column: 2; width: max-content; }
   .followup-grid { grid-template-columns: 1fr; }
+  .jd-drawer { width: 100%; max-width: none; }
+  .jd-meta-grid { grid-template-columns: 1fr; }
   .question-legend { flex-direction: column; gap: 7px; }
   .form-two { grid-template-columns: 1fr; }
   .stage-picker { grid-template-columns: repeat(2,1fr); }

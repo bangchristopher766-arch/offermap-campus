@@ -146,6 +146,34 @@ test("supports manual resume correction and invalidates stale analyses", async (
   }
 });
 
+test("supports selecting and deleting private resume versions", async () => {
+  const [component, listRoute, resumeRoute] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resumes/[id]/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /设为母版/);
+  assert.match(component, /ResumeVersionDeleteModal/);
+  assert.match(listRoute, /is_current/);
+  assert.match(resumeRoute, /export async function PUT/);
+  assert.match(resumeRoute, /export async function DELETE/);
+  assert.match(resumeRoute, /resume-pdfs/);
+  assert.match(resumeRoute, /analysis_status: "stale"/);
+  assert.match(resumeRoute, /preservedActiveId/);
+});
+
+test("shows complete position metadata and the original JD in analysis", async () => {
+  const [component, analysisRoute] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /岗位信息与 JD/);
+  assert.match(component, /完整 JD 原文/);
+  assert.match(component, /复制完整 JD/);
+  assert.match(component, /function JobDetailDrawer/);
+  assert.match(analysisRoute, /jd_text/);
+});
+
 test("exposes company and position management with destructive confirmation", async () => {
   const component = await readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8");
   assert.match(component, /function CompanyManageModal/);
