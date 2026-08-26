@@ -70,11 +70,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const phase = body.phase === "expand" ? "expand" : "core";
 
     const { data: position, error: positionError } = await supabase.from("positions")
-      .select("id,category,jd_text,resume_id").eq("id", positionId).maybeSingle();
+      .select("id,category,jd_text,resume_id,position_revision,role_profile_id").eq("id", positionId).maybeSingle();
     if (positionError) throw positionError;
     if (!position) return Response.json({ error: "岗位不存在或你无权分析" }, { status: 404 });
 
-    let resumeQuery = supabase.from("resumes").select("id,version,parsed_text,content_hash");
+    let resumeQuery = supabase.from("resumes").select("id,version,document_version,parsed_text,content_hash");
     resumeQuery = position.resume_id ? resumeQuery.eq("id", position.resume_id) : resumeQuery.order("version", { ascending: false }).limit(1);
     const { data: resume, error: resumeError } = await resumeQuery.maybeSingle();
     if (resumeError) throw resumeError;
@@ -143,8 +143,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await supabase.from("ai_runs").update({
       status: "ready", model: result.model, duration_ms: durationMs,
       input_tokens: result.usage?.prompt_tokens ?? null, output_tokens: result.usage?.completion_tokens ?? null,
+      position_revision: position.position_revision,
+      resume_version_id: resume.id,
+      role_profile_id: position.role_profile_id,
+      completed_at: new Date().toISOString(),
+      result_snapshot: validated,
       error_code: null,
     }).eq("id", runId);
+    const { error: snapshotError } = await supabase.from("analysis_snapshots").insert({
+      user_id: user.user.id,
+      position_id: positionId,
+      analysis_type: phase === "core" ? "resume_core" : "resume_expand",
+      position_revision: position.position_revision,
+      resume_version_id: resume.id,
+      role_profile_id: position.role_profile_id,
+      prompt_version: PROMPT_VERSION,
+      model: result.model,
+      result_json: validated,
+    });
+    if (snapshotError) throw snapshotError;
     const saved = await loadSuggestions(supabase, positionId);
     return Response.json({ data: { suggestions: enrichSuggestions(saved, evidence), meta: { model: result.model, provider: result.provider, durationMs, phase, resumeCompleted: true } } });
   } catch (error) {

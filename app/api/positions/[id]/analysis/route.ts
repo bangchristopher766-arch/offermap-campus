@@ -6,6 +6,7 @@ import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
 const PROMPT_VERSION = "evidence-v4-semantic-multi-evidence";
+const recommendationTerms = ["用户研究","需求分析","产品设计","数据分析","跨团队","人工智能","大模型","Agent","评测","Prompt","Python","Java","Go","SQL","数据库","增长","留存","转化","活动运营","市场洞察","品牌","渠道","预算"];
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -19,7 +20,7 @@ async function sha256(value: string) {
 async function loadPosition(supabase: ReturnType<typeof createUserSupabase>, id: string) {
   const { data, error } = await supabase
     .from("positions")
-    .select("id,title,category,department,location,job_code,jd_text,resume_id,analysis_status,analyzed_resume_version,companies(name),applications(current_stage,next_event_at,next_event_type)")
+    .select("id,title,category,department,location,job_code,jd_text,resume_id,industry,seniority,product_type,company_type,position_revision,canonical_role_id,role_profile_id,analysis_status,analyzed_resume_version,companies(name),applications(current_stage,next_event_at,next_event_type)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -27,7 +28,7 @@ async function loadPosition(supabase: ReturnType<typeof createUserSupabase>, id:
 }
 
 async function loadResumeSummary(supabase: ReturnType<typeof createUserSupabase>, resumeId?: string | null) {
-  let query = supabase.from("resumes").select("id,name,version,structured_content");
+  let query = supabase.from("resumes").select("id,name,version,document_version,resume_document_id,structured_content,resume_documents(id,name,direction,is_default)");
   query = resumeId ? query.eq("id", resumeId) : query.order("version", { ascending: false }).limit(1);
   const { data, error } = await query.maybeSingle();
   if (error) throw error;
@@ -121,20 +122,51 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const position = await loadPosition(supabase, id);
     if (!position) return Response.json({ error: "岗位不存在或你无权查看" }, { status: 404 });
-    const [evidence, suggestions, rawQuestions, completedRuns, resume, activeRun, historyRuns] = await Promise.all([
+    const { data: binding } = await supabase.from("position_resume_bindings").select("id,resume_version_id,selected_by,selected_at").eq("position_id", id).eq("status", "current").maybeSingle();
+    const selectedResumeId = binding?.resume_version_id ?? position.resume_id;
+    const [evidence, suggestions, rawQuestions, completedRuns, resume, activeRun, historyRuns, resumeDocuments, benchmarkEvidence, submissions, snapshots] = await Promise.all([
       loadEvidence(supabase, id), loadSuggestions(supabase, id), loadQuestions(supabase, id),
-      supabase.from("ai_runs").select("task,prompt_version").eq("position_id", id).eq("status", "ready").in("task", ["resume-core", "interview-core"]),
-      loadResumeSummary(supabase, position.resume_id),
+      supabase.from("ai_runs").select("task,prompt_version,resume_version_id,position_revision").eq("position_id", id).eq("status", "ready").in("task", ["evidence", "resume-core", "interview-core"]),
+      loadResumeSummary(supabase, selectedResumeId),
       loadActiveAiRun(supabase, id),
-      supabase.from("ai_runs").select("id,task,model,status,duration_ms,input_tokens,output_tokens,error_code,created_at").eq("position_id", id).order("created_at", { ascending: false }).limit(20),
+      supabase.from("ai_runs").select("id,task,model,status,duration_ms,input_tokens,output_tokens,error_code,position_revision,resume_version_id,role_profile_id,role_profile_version,created_at,completed_at").eq("position_id", id).order("created_at", { ascending: false }).limit(30),
+      supabase.from("resume_documents").select("id,name,direction,is_default,current_version_id,resumes(id,name,version,document_version,parsed_text,file_size,page_count,updated_at)").is("archived_at", null).order("is_default", { ascending: false }),
+      position.role_profile_id ? supabase.from("benchmark_evidence").select("id,status,resume_quotes,rationale,missing_information,action,confidence,citation_verified,user_confirmed,ignored_at,role_profile_id,role_profile_version,resume_version_id,role_requirements(id,label,description,category,prevalence_level,source_count,display_order),role_profiles(id,version,industry,seniority,product_type,generated_at,source_summary,role_taxonomies(id,canonical_title,role_family))").eq("position_id", id).eq("resume_version_id", selectedResumeId).eq("role_profile_id", position.role_profile_id).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+      supabase.from("application_submissions").select("id,resume_version_id,submitted_at,channel,note,resumes(id,name,version,document_version,resume_documents(name,direction))").eq("position_id", id).order("submitted_at", { ascending: false }),
+      supabase.from("analysis_snapshots").select("id,analysis_type,position_revision,resume_version_id,role_profile_id,role_profile_version,prompt_version,model,created_at").eq("position_id", id).order("created_at", { ascending: false }).limit(30),
     ]);
     const questions = await enrichQuestionPreparations(supabase, rawQuestions);
     const completedRows = completedRuns.data ?? [];
     // A ready core run is the durable completion signal. Do not gate visibility on
     // a hard-coded prompt version: prompt upgrades must not hide persisted results.
-    const resumeCompleted = completedRows.some((run) => run.task === "resume-core");
-    const interviewCompleted = completedRows.some((run) => run.task === "interview-core");
-    return Response.json({ data: { position, resume, evidence, suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [], questions, meta: { resumeCompleted, interviewCompleted, activeRun, history: historyRuns.data ?? [] } } });
+    const belongsToCurrentScope = (run: { resume_version_id?: string | null }) => run.resume_version_id ? run.resume_version_id === selectedResumeId : position.analysis_status !== "stale";
+    const evidenceCompleted = completedRows.some((run) => run.task === "evidence" && belongsToCurrentScope(run));
+    const resumeCompleted = completedRows.some((run) => run.task === "resume-core" && belongsToCurrentScope(run));
+    const interviewCompleted = completedRows.some((run) => run.task === "interview-core" && belongsToCurrentScope(run));
+    const resumeOptions = (resumeDocuments.data ?? []).flatMap((document) => {
+      const versions = Array.isArray(document.resumes) ? document.resumes : document.resumes ? [document.resumes] : [];
+      return versions.map((version) => {
+        const basis = `${position.jd_text || position.title}`.toLowerCase();
+        const relevant = recommendationTerms.filter((term) => basis.includes(term.toLowerCase()));
+        const covered = relevant.filter((term) => String(version.parsed_text || "").toLowerCase().includes(term.toLowerCase()));
+        const gaps = relevant.filter((term) => !covered.includes(term));
+        return { documentId: document.id, documentName: document.name, direction: document.direction, isDefault: document.is_default, isDocumentCurrent: document.current_version_id === version.id, versionId: version.id, version: version.document_version ?? version.version, fileName: version.name, updatedAt: version.updated_at, score: covered.length * 3 - gaps.length, covered, gaps, reason: covered.length ? `可直接召回：${covered.slice(0, 3).join("、")}` : "建议结合完整证据地图判断" };
+      });
+    }).sort((a, b) => b.score - a.score || Number(b.isDocumentCurrent) - Number(a.isDocumentCurrent));
+    const benchmarkRows = benchmarkEvidence.data ?? [];
+    const benchmarkProfile = benchmarkRows[0]?.role_profiles ?? null;
+    return Response.json({ data: {
+      position,
+      resume,
+      binding: binding ? { ...binding, resumeVersionId: binding.resume_version_id } : selectedResumeId ? { id: null, resumeVersionId: selectedResumeId, selected_by: "legacy" } : null,
+      resumeOptions,
+      submissions: submissions.data ?? [],
+      benchmark: { profile: benchmarkProfile, evidence: benchmarkRows },
+      evidence: evidenceCompleted ? evidence : [],
+      suggestions: resumeCompleted ? enrichSuggestions(suggestions, evidence) : [],
+      questions: interviewCompleted ? questions : [],
+      meta: { evidenceCompleted, resumeCompleted, interviewCompleted, activeRun, history: historyRuns.data ?? [], snapshots: snapshots.data ?? [] },
+    } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "分析读取失败" }, { status: 503 });
   }
@@ -155,9 +187,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const body = await request.json().catch(() => ({})) as { force?: boolean };
     const position = await loadPosition(supabase, positionId);
     if (!position) return Response.json({ error: "岗位不存在或你无权分析" }, { status: 404 });
+    if (!position.jd_text || position.jd_text.trim().length < 80) {
+      return Response.json({ error: "当前岗位没有完整 JD，请先使用“岗位通用能力”开始准备，或补充至少 80 字的 JD", code: "JD_INCOMPLETE" }, { status: 409 });
+    }
 
-    let resumeQuery = supabase.from("resumes").select("id,name,version,parsed_text,structured_content,content_hash");
-    resumeQuery = position.resume_id ? resumeQuery.eq("id", position.resume_id) : resumeQuery.order("version", { ascending: false }).limit(1);
+    const { data: binding } = await supabase.from("position_resume_bindings").select("resume_version_id").eq("position_id", positionId).eq("status", "current").maybeSingle();
+    const selectedResumeId = binding?.resume_version_id ?? position.resume_id;
+    let resumeQuery = supabase.from("resumes").select("id,name,version,document_version,parsed_text,structured_content,content_hash");
+    resumeQuery = selectedResumeId ? resumeQuery.eq("id", selectedResumeId) : resumeQuery.order("version", { ascending: false }).limit(1);
     const { data: resume, error: resumeError } = await resumeQuery.maybeSingle();
     if (resumeError) throw resumeError;
     if (!resume?.parsed_text || resume.parsed_text.trim().length < 80) return Response.json({ error: "请先上传并成功解析一份母版简历", code: "RESUME_REQUIRED" }, { status: 409 });
@@ -198,7 +235,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     ]);
     if (suggestionDeleteError) throw suggestionDeleteError;
     if (questionDeleteError) throw questionDeleteError;
-    await supabase.from("ai_runs").delete().eq("position_id", positionId).in("task", ["resume-core", "resume-expand", "interview-core", "interview-expand"]);
     if (oldEvidenceIds.length) await supabase.from("evidence_items").delete().in("id", oldEvidenceIds);
 
     for (const item of validated.requirements) {
@@ -252,11 +288,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       duration_ms: durationMs,
       input_tokens: result.usage?.prompt_tokens ?? null,
       output_tokens: result.usage?.completion_tokens ?? null,
+      position_revision: position.position_revision,
+      resume_version_id: resume.id,
+      role_profile_id: position.role_profile_id,
+      completed_at: new Date().toISOString(),
+      result_snapshot: validated,
       error_code: null,
     }).eq("id", runId);
+    const { error: snapshotError } = await supabase.from("analysis_snapshots").insert({
+      user_id: user.user.id,
+      position_id: positionId,
+      analysis_type: "jd_evidence",
+      position_revision: position.position_revision,
+      resume_version_id: resume.id,
+      role_profile_id: position.role_profile_id,
+      role_profile_version: null,
+      prompt_version: PROMPT_VERSION,
+      model: result.model,
+      result_json: validated,
+    });
+    if (snapshotError) throw snapshotError;
     await supabase.from("positions").update({
       analysis_status: "ready",
-      analyzed_resume_version: resume.version,
+      analyzed_resume_version: resume.document_version ?? resume.version,
       updated_at: new Date().toISOString(),
     }).eq("id", positionId);
 

@@ -13,6 +13,7 @@ const updateSchema = z.object({
   nextEventAt: z.string().datetime().nullable().optional(),
   nextEventType: z.string().trim().max(120).optional(),
   channel: z.string().trim().max(120).optional(),
+  resumeVersionId: z.string().uuid().optional(),
   contact: z.string().trim().max(160).optional(),
   note: z.string().trim().max(2000).optional(),
 });
@@ -49,6 +50,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const owned = await ownedPosition(request, id);
     if ("error" in owned) return owned.error;
     const { data: previous } = await owned.supabase.from("applications").select("id,current_stage,applied_at,next_event_at,next_event_type,channel,contact,note").eq("position_id", id).maybeSingle();
+    let appliedResumeVersionId = input.data.resumeVersionId;
+    if (input.data.stage === "applied" && previous?.current_stage !== "applied" && !appliedResumeVersionId) {
+      const { data: binding } = await owned.supabase.from("position_resume_bindings").select("resume_version_id").eq("position_id", id).eq("status", "current").maybeSingle();
+      appliedResumeVersionId = binding?.resume_version_id;
+      if (!appliedResumeVersionId) return Response.json({ error: "请先为岗位选择本次实际投递的简历版本" }, { status: 409 });
+    }
     const values = {
       user_id: owned.user.id,
       position_id: id,
@@ -73,6 +80,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         note: input.data.note ?? "",
       });
       if (eventError) throw eventError;
+    }
+    if (input.data.stage === "applied" && previous?.current_stage !== "applied") {
+      const { error: submissionError } = await owned.supabase.from("application_submissions").insert({
+        user_id: owned.user.id,
+        position_id: id,
+        resume_version_id: appliedResumeVersionId,
+        submitted_at: input.data.appliedAt ?? input.data.occurredAt ?? new Date().toISOString(),
+        channel: input.data.channel ?? "",
+        note: input.data.note ?? "",
+      });
+      if (submissionError) throw submissionError;
     }
     return Response.json({ data });
   } catch (error) {

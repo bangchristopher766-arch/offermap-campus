@@ -29,7 +29,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const { id } = await context.params;
     const { data: existing, error: existingError } = await supabase
       .from("resumes")
-      .select("id,structured_content")
+      .select("id,name,version,document_version,resume_document_id,pdf_path,file_size,page_count,content_hash,structured_content")
       .eq("id", id)
       .maybeSingle();
     if (existingError) throw existingError;
@@ -59,21 +59,34 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       },
     };
 
-    const { data, error } = await supabase
-      .from("resumes")
-      .update({ parsed_text: parsedText, structured_content: structuredContent, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .select("id,name,version,file_size,page_count,structured_content,created_at,updated_at")
-      .single();
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(parsedText));
+    const contentHash = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const [{ data: latest }, { data: latestDocument }] = await Promise.all([
+      supabase.from("resumes").select("version").order("version", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("resumes").select("document_version").eq("resume_document_id", existing.resume_document_id).order("document_version", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    const newId = crypto.randomUUID();
+    const { data, error } = await supabase.from("resumes").insert({
+      id: newId,
+      user_id: user.user.id,
+      name: existing.name,
+      parsed_text: parsedText,
+      content_hash: contentHash,
+      version: (latest?.version ?? existing.version) + 1,
+      resume_document_id: existing.resume_document_id,
+      document_version: (latestDocument?.document_version ?? existing.document_version ?? 0) + 1,
+      parse_status: "ready",
+      pdf_path: existing.pdf_path,
+      file_size: existing.file_size,
+      page_count: existing.page_count,
+      structured_content: structuredContent,
+    }).select("id,name,version,document_version,resume_document_id,file_size,page_count,structured_content,created_at,updated_at").single();
     if (error) throw error;
-
-    await supabase
-      .from("positions")
-      .update({ analysis_status: "stale", updated_at: new Date().toISOString() })
-      .eq("user_id", user.user.id)
-      .in("analysis_status", ["processing", "ready", "failed"]);
-
-    return Response.json({ data, stalePositions: true });
+    if (existing.resume_document_id) {
+      const { error: documentError } = await supabase.from("resume_documents").update({ current_version_id: data.id, updated_at: new Date().toISOString() }).eq("id", existing.resume_document_id);
+      if (documentError) throw documentError;
+    }
+    return Response.json({ data, createdNewVersion: true, stalePositions: false });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "保存简历修改失败" }, { status: 503 });
   }
@@ -85,18 +98,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) return Response.json({ error: "请先登录" }, { status: 401 });
     const { id } = await context.params;
-    const { data: resume, error: resumeError } = await supabase.from("resumes").select("id,version").eq("id", id).maybeSingle();
+    const { data: resume, error: resumeError } = await supabase.from("resumes").select("id,version,resume_document_id,document_version").eq("id", id).maybeSingle();
     if (resumeError) throw resumeError;
     if (!resume) return Response.json({ error: "简历版本不存在或你无权使用" }, { status: 404 });
 
+    if (!resume.resume_document_id) return Response.json({ error: "该历史版本尚未归入简历资料库" }, { status: 409 });
     const now = new Date().toISOString();
-    const { error: touchError } = await supabase.from("resumes").update({ updated_at: now }).eq("id", id);
-    if (touchError) throw touchError;
-    const { error: linkError } = await supabase.from("positions").update({ resume_id: id, updated_at: now }).eq("user_id", user.user.id);
-    if (linkError) throw linkError;
-    const { error: staleError } = await supabase.from("positions").update({ analysis_status: "stale", updated_at: now }).eq("user_id", user.user.id).in("analysis_status", ["processing", "ready", "failed"]);
-    if (staleError) throw staleError;
-    return Response.json({ data: { id, version: resume.version, is_current: true } });
+    const { error: documentError } = await supabase.from("resume_documents").update({ current_version_id: id, updated_at: now }).eq("id", resume.resume_document_id);
+    if (documentError) throw documentError;
+    return Response.json({ data: { id, version: resume.document_version ?? resume.version, is_current: true } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "切换母版简历失败" }, { status: 503 });
   }
@@ -108,35 +118,32 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) return Response.json({ error: "请先登录" }, { status: 401 });
     const { id } = await context.params;
-    const [{ data: resume, error: resumeError }, { data: activePosition }, { data: activeResume }] = await Promise.all([
-      supabase.from("resumes").select("id,version,pdf_path").eq("id", id).maybeSingle(),
-      supabase.from("positions").select("resume_id").not("resume_id", "is", null).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("resumes").select("id").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+    const [{ data: resume, error: resumeError }, { count: submissionCount }, { count: bindingCount }] = await Promise.all([
+      supabase.from("resumes").select("id,version,document_version,resume_document_id,pdf_path").eq("id", id).maybeSingle(),
+      supabase.from("application_submissions").select("id", { count: "exact", head: true }).eq("resume_version_id", id),
+      supabase.from("position_resume_bindings").select("id", { count: "exact", head: true }).eq("resume_version_id", id).eq("status", "current"),
     ]);
     if (resumeError) throw resumeError;
     if (!resume) return Response.json({ error: "简历版本不存在或你无权删除" }, { status: 404 });
 
+    if (submissionCount) return Response.json({ error: "这份简历已作为实际投递版本保存，不能删除；你可以将简历文档归档" }, { status: 409 });
+    if (bindingCount) return Response.json({ error: "仍有岗位正在使用这份简历，请先在岗位页更换分析简历" }, { status: 409 });
     const { error: deleteError } = await supabase.from("resumes").delete().eq("id", id);
     if (deleteError) throw deleteError;
-    const previousActiveId = activePosition?.resume_id ?? activeResume?.id ?? null;
-    const preservedActiveId = previousActiveId && previousActiveId !== id ? previousActiveId : null;
-    let replacementQuery = supabase.from("resumes").select("id,version");
-    replacementQuery = preservedActiveId ? replacementQuery.eq("id", preservedActiveId) : replacementQuery.order("updated_at", { ascending: false }).limit(1);
-    const { data: replacement, error: replacementError } = await replacementQuery.maybeSingle();
+    const { data: replacement, error: replacementError } = await supabase.from("resumes").select("id,version,document_version")
+      .eq("resume_document_id", resume.resume_document_id).order("document_version", { ascending: false }).limit(1).maybeSingle();
     if (replacementError) throw replacementError;
-
-    const now = new Date().toISOString();
-    const { error: linkError } = await supabase.from("positions").update({ resume_id: replacement?.id ?? null, updated_at: now }).eq("user_id", user.user.id);
-    if (linkError) throw linkError;
-    const { error: staleError } = await supabase.from("positions").update({ analysis_status: "stale", updated_at: now }).eq("user_id", user.user.id).in("analysis_status", ["processing", "ready", "failed"]);
-    if (staleError) throw staleError;
+    if (resume.resume_document_id) await supabase.from("resume_documents").update({ current_version_id: replacement?.id ?? null, updated_at: new Date().toISOString() }).eq("id", resume.resume_document_id);
 
     let storageWarning: string | null = null;
     if (resume.pdf_path) {
-      const { error: storageError } = await supabase.storage.from("resume-pdfs").remove([resume.pdf_path]);
-      if (storageError) storageWarning = "数据库版本已删除，原文件将在稍后清理";
+      const { count: sharedCount } = await supabase.from("resumes").select("id", { count: "exact", head: true }).eq("pdf_path", resume.pdf_path);
+      if (!sharedCount) {
+        const { error: storageError } = await supabase.storage.from("resume-pdfs").remove([resume.pdf_path]);
+        if (storageError) storageWarning = "数据库版本已删除，原文件将在稍后清理";
+      }
     }
-    return Response.json({ deleted: true, deletedVersion: resume.version, currentResume: replacement ?? null, warning: storageWarning });
+    return Response.json({ deleted: true, deletedVersion: resume.document_version ?? resume.version, currentResume: replacement ?? null, warning: storageWarning });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "删除简历版本失败" }, { status: 503 });
   }

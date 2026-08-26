@@ -29,9 +29,11 @@ test("renders the independent OfferMap workspace routes", async () => {
   assert.match(home, /<title>OfferMap · 应届求职工作台<\/title>/);
   assert.match(home, /href="\/resume" class="entry-card card"/);
   assert.match(home, /href="\/map" class="entry-card card"/);
-  assert.match(resume, /当前母版/);
+  assert.match(resume, /简历库/);
+  assert.match(resume, /多简历 · 不可变版本/);
   assert.match(map, /个人求职地图/);
-  assert.match(analysis, /证据地图/);
+  assert.match(analysis, /当前 JD/);
+  assert.match(analysis, /岗位通用能力/);
   assert.match(analysis, /定制简历/);
   assert.match(analysis, /面试追问地图/);
   assert.doesNotMatch(home, /codex-preview|Your site is taking shape|react-loading-skeleton/);
@@ -109,7 +111,8 @@ test("implements private PDF resume versions", async () => {
   assert.match(component, /type="file"/);
   assert.match(component, /开始解析并保存/);
   assert.match(parseRoute, /storage/);
-  assert.match(parseRoute, /analysis_status: "stale"/);
+  assert.match(parseRoute, /resume_document_id/);
+  assert.match(parseRoute, /document_version/);
   assert.match(parseRoute, /parseResumePdf\(bytes\.slice\(\)\)/);
   assert.match(parseRoute, /EMPTY_FILE_HASH/);
   assert.doesNotMatch(listRoute, /createSignedUrl/);
@@ -130,7 +133,7 @@ test("implements private PDF resume versions", async () => {
   assert.match(migration, /public, file_size_limit/);
 });
 
-test("supports manual resume correction and invalidates stale analyses", async () => {
+test("supports immutable manual resume correction without overwriting prior analyses", async () => {
   const [component, resumeRoute, analysisRoute, resumeSuggestionRoute, interviewRoute] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/[id]/route.ts", import.meta.url), "utf8"),
@@ -142,7 +145,8 @@ test("supports manual resume correction and invalidates stale analyses", async (
   assert.match(component, /保存校正稿/);
   assert.match(component, /原始 PDF 不会被修改/);
   assert.match(resumeRoute, /manual-correction/);
-  assert.match(resumeRoute, /analysis_status: "stale"/);
+  assert.match(resumeRoute, /method: "manual-correction"/);
+  assert.match(resumeRoute, /document_version/);
   assert.match(resumeRoute, /parsed_text: parsedText/);
   for (const route of [analysisRoute, resumeSuggestionRoute, interviewRoute]) {
     assert.match(route, /resume\.parsed_text/);
@@ -155,14 +159,15 @@ test("supports selecting and deleting private resume versions", async () => {
     readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/[id]/route.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(component, /设为母版/);
+  assert.match(component, /简历库/);
+  assert.match(component, /多简历 · 不可变版本/);
   assert.match(component, /ResumeVersionDeleteModal/);
   assert.match(listRoute, /is_current/);
   assert.match(resumeRoute, /export async function PUT/);
   assert.match(resumeRoute, /export async function DELETE/);
   assert.match(resumeRoute, /resume-pdfs/);
-  assert.match(resumeRoute, /analysis_status: "stale"/);
-  assert.match(resumeRoute, /preservedActiveId/);
+  assert.match(resumeRoute, /position_resume_bindings/);
+  assert.match(resumeRoute, /application_submissions/);
 });
 
 test("shows complete position metadata and the original JD in analysis", async () => {
@@ -212,7 +217,8 @@ test("persists grounded resume suggestions and interview maps", async () => {
   assert.match(engine, /不得把“参与”升级成“负责\/主导”/);
   assert.match(resumeRoute, /resume-\$\{phase\}/);
   assert.match(resumeRoute, /resume-v5-fast-single-call/);
-  assert.match(analysisRoute, /const resumeCompleted = completedRows\.some\(\(run\) => run\.task === "resume-core"\)/);
+  assert.match(analysisRoute, /run\.task === "resume-core" && belongsToCurrentScope\(run\)/);
+  assert.match(analysisRoute, /analysis_snapshots/);
   assert.doesNotMatch(analysisRoute, /resume-v4-cohesive-tailored-version/);
   assert.match(interviewRoute, /interview-\$\{phase\}/);
   assert.match(aiClient, /finishReason/);
@@ -285,6 +291,31 @@ test("saves a private answer preparation workspace for every interview question"
   assert.match(analysisRoute, /question-preparation/);
   assert.match(migration, /'ai_runs','feedback'/);
   assert.match(migration, /auth\.uid\(\) = user_id/);
+});
+
+test("supports role benchmarks, multi-resume bindings, and immutable submission snapshots", async () => {
+  const [component, migration, bindingRoute, benchmarkRoute, applicationRoute] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/0004_role_profiles_and_resume_library.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/resume-binding/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/benchmark-analysis/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/application/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /岗位通用能力/);
+  assert.match(component, /更换分析简历/);
+  assert.match(component, /最近实际投递/);
+  assert.match(component, /不代表当前公司明确/);
+  assert.match(migration, /create table if not exists public\.resume_documents/);
+  assert.match(migration, /create table if not exists public\.position_resume_bindings/);
+  assert.match(migration, /create table if not exists public\.application_submissions/);
+  assert.match(migration, /create table if not exists public\.role_profiles/);
+  assert.match(migration, /create table if not exists public\.benchmark_evidence/);
+  assert.match(migration, /create table if not exists public\.analysis_snapshots/);
+  assert.match(bindingRoute, /status: "history"/);
+  assert.match(bindingRoute, /status: "current"/);
+  assert.match(benchmarkRoute, /task: "benchmark"/);
+  assert.match(benchmarkRoute, /citation_verified/);
+  assert.match(applicationRoute, /application_submissions/);
 });
 
 test("passes the 12-sample four-category batch contract", async () => {

@@ -8,7 +8,11 @@ const positionSchema = z.object({
   department: z.string().trim().max(120).optional().default(""),
   location: z.string().trim().max(80).optional().default(""),
   job_code: z.string().trim().max(80).optional().default(""),
-  jd_text: z.string().trim().min(80).max(30_000),
+  industry: z.string().trim().max(80).optional().default(""),
+  seniority: z.string().trim().max(40).optional().default("early_career"),
+  product_type: z.string().trim().max(60).optional().default(""),
+  company_type: z.string().trim().max(80).optional().default(""),
+  jd_text: z.string().trim().max(30_000).optional().default(""),
 });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {

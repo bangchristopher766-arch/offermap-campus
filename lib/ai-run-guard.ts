@@ -8,12 +8,13 @@ export type ActiveAiRun = {
   id: string;
   task: string;
   phase: "core" | "expand" | null;
-  kind: "evidence" | "resume" | "interview";
+  kind: "evidence" | "benchmark" | "resume" | "interview";
   startedAt: string;
   stalled: boolean;
 };
 
 function taskMeta(task: string) {
+  if (task === "benchmark") return { kind: "benchmark" as const, phase: null };
   if (task.startsWith("resume-")) return { kind: "resume" as const, phase: task.endsWith("expand") ? "expand" as const : "core" as const };
   if (task.startsWith("interview-")) return { kind: "interview" as const, phase: task.endsWith("expand") ? "expand" as const : "core" as const };
   return { kind: "evidence" as const, phase: null };
