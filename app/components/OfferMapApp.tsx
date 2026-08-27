@@ -210,6 +210,26 @@ const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
   { key: "map", label: "求职地图", href: "/map" },
 ];
 
+const ACCOUNT_AVATAR_GRADIENTS = [
+  "linear-gradient(145deg, #2f6fed, #7047c8)",
+  "linear-gradient(145deg, #008f7a, #176b87)",
+  "linear-gradient(145deg, #e06c45, #ad3f67)",
+  "linear-gradient(145deg, #4776a8, #324b72)",
+  "linear-gradient(145deg, #8a61d2, #4f67c8)",
+  "linear-gradient(145deg, #b07425, #8d4f32)",
+];
+
+function createAccountAvatar({ email, name, accountKey }: { email?: string; name?: string; accountKey?: string }) {
+  const emailName = email?.split("@")[0]?.trim() ?? "";
+  const displayName = name?.trim() || emailName || "访客";
+  const firstCharacter = Array.from(displayName).find((character) => /[\p{L}\p{N}]/u.test(character)) ?? "访";
+  const label = /[a-z]/i.test(firstCharacter) ? firstCharacter.toUpperCase() : firstCharacter;
+  const seed = accountKey || email || displayName;
+  let hash = 0;
+  for (const character of seed) hash = (hash * 31 + (character.codePointAt(0) ?? 0)) >>> 0;
+  return { label, displayName, background: ACCOUNT_AVATAR_GRADIENTS[hash % ACCOUNT_AVATAR_GRADIENTS.length] };
+}
+
 const ALL_STAGES: ApplicationStage[] = ["感兴趣", "准备中", "已投递", "笔试中", "一面中", "二面中", "终面中", "Offer 沟通", "已录用", "未通过", "已放弃"];
 
 const demoCompanies: WorkspaceCompany[] = [
@@ -413,12 +433,13 @@ const STATE_COPY: Record<OfferMapView, Record<Exclude<DemoState, "normal">, { ti
   },
 };
 
-function AppHeader({ view, companies, userEmail, signOut, openPassword }: { view: OfferMapView; companies: WorkspaceCompany[]; userEmail?: string; signOut?: () => void; openPassword?: () => void }) {
+function AppHeader({ view, companies, userEmail, userName, accountKey, signOut, openPassword }: { view: OfferMapView; companies: WorkspaceCompany[]; userEmail?: string; userName?: string; accountKey?: string; signOut?: () => void; openPassword?: () => void }) {
   const navView = view === "analysis" ? "positions" : view;
   const [searchOpen, setSearchOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const accountAvatar = createAccountAvatar({ email: userEmail, name: userName, accountKey });
   const searchablePositions = companies.flatMap((company) => company.groups.flatMap((group) => group.positions.map((position) => ({ ...position, company: company.name, category: group.category }))));
   const searchResults = searchablePositions.filter((position) => `${position.company}${position.title}${position.category}`.toLowerCase().includes(searchQuery.toLowerCase()));
   useEffect(() => {
@@ -449,8 +470,8 @@ function AppHeader({ view, companies, userEmail, signOut, openPassword }: { view
               {createOpen && <div className="header-popover create-menu"><a href="/positions"><BriefcaseBusiness size={16} /><span><strong>新建岗位</strong><small>保存公司、类别与 JD</small></span></a><a href="/resume"><Upload size={16} /><span><strong>上传简历</strong><small>更新母版简历版本</small></span></a></div>}
             </div>
             <div className="header-menu-wrap">
-              <button className="avatar" type="button" onClick={() => { setProfileOpen(!profileOpen); setCreateOpen(false); }} aria-label="个人中心" aria-expanded={profileOpen}>林</button>
-              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar">林</span><div><strong>{userEmail ? userEmail.split("@")[0] : "林同学"}</strong><small>{userEmail ?? "演示账号 · 产品方向"}</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a>{signOut ? <><button type="button" onClick={() => { setProfileOpen(false); openPassword?.(); }}><ShieldCheck size={15} />设置登录密码</button><button type="button" onClick={signOut}><LogOut size={15} />退出登录</button></> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
+              <button className="avatar account-avatar" style={{ background: accountAvatar.background }} type="button" onClick={() => { setProfileOpen(!profileOpen); setCreateOpen(false); }} aria-label={`${accountAvatar.displayName}的个人中心`} aria-expanded={profileOpen}>{accountAvatar.label}</button>
+              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar account-avatar" style={{ background: accountAvatar.background }}>{accountAvatar.label}</span><div><strong>{accountAvatar.displayName}</strong><small>{userEmail ?? "演示账号 · 求职方向"}</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a>{signOut ? <><button type="button" onClick={() => { setProfileOpen(false); openPassword?.(); }}><ShieldCheck size={15} />设置登录密码</button><button type="button" onClick={signOut}><LogOut size={15} />退出登录</button></> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
             </div>
           </div>
         </div>
@@ -655,7 +676,7 @@ function PositionsView({ openNewPosition, companies, onStageUpdate, onCompanyRen
   );
 }
 
-function MapView({ companies }: { companies: WorkspaceCompany[] }) {
+function MapView({ companies, accountAvatar }: { companies: WorkspaceCompany[]; accountAvatar: ReturnType<typeof createAccountAvatar> }) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [quickView, setQuickView] = useState<"all" | "interview" | "attention" | "offer">("all");
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
@@ -675,7 +696,7 @@ function MapView({ companies }: { companies: WorkspaceCompany[] }) {
       {filterOpen && <section className="card map-filter-panel"><div><strong>快捷视图</strong><div className="filter-chips">{([['all','全部目标'],['interview','面试进行中'],['attention','需要优先准备'],['offer','Offer 阶段']] as const).map(([value,label]) => <button className={quickView === value ? "active" : ""} type="button" onClick={() => setQuickView(value)} key={value}>{label}</button>)}</div></div><div><strong>岗位类别</strong><div className="filter-chips">{(["技术","产品","运营","市场"] as Category[]).map((item) => <button className={selectedCategories.includes(item) ? "active" : ""} type="button" onClick={() => toggleCategory(item)} key={item}>{item}</button>)}</div></div><button className="text-button" type="button" onClick={() => { setQuickView("all"); setSelectedCategories([]); }}>清除全部</button></section>}
       {(quickView !== "all" || selectedCategories.length > 0) && <div className="active-filter-row"><span>当前视图</span>{quickView !== "all" && <button type="button" onClick={() => setQuickView("all")}>{quickView === "interview" ? "面试进行中" : quickView === "attention" ? "需要优先准备" : "Offer 阶段"}<X size={12} /></button>}{selectedCategories.map((item) => <button type="button" onClick={() => toggleCategory(item)} key={item}>{item}<X size={12} /></button>)}</div>}
       <div className="map-summary"><span><strong>{companies.length}</strong>目标公司</span><span><strong>{allPositions.length}</strong>具体岗位</span><span><strong>{allPositions.filter((position) => !["感兴趣","未通过","已放弃"].includes(position.stage)).length}</strong>正在准备</span><span><strong>{allPositions.filter((position) => position.analysis.includes("待") || position.analysis.includes("需要")).length}</strong>需要补强</span></div>
-      <section className="card career-map"><div className="map-grid" />{visibleCompanies.map((_, index) => <div className={`map-connector ${["c-one","c-two","c-three"][index]}`} key={`line-${index}`} />)}<div className="map-root"><span className="avatar large">林</span><strong>我的求职目标</strong><small>{visibleCompanies.length} 家公司显示中</small></div>
+      <section className="card career-map"><div className="map-grid" />{visibleCompanies.map((_, index) => <div className={`map-connector ${["c-one","c-two","c-three"][index]}`} key={`line-${index}`} />)}<div className="map-root"><span className="avatar account-avatar large" style={{ background: accountAvatar.background }}>{accountAvatar.label}</span><strong>我的求职目标</strong><small>{visibleCompanies.length} 家公司显示中</small></div>
         {visibleCompanies.map((company, index) => {
           const positions = company.groups.filter((group) => selectedCategories.length === 0 || selectedCategories.includes(group.category)).flatMap((group) => group.positions);
           const featured = positions.find((position) => ["Offer 沟通","已录用"].includes(position.stage)) ?? positions.find((position) => ["一面中","二面中","终面中"].includes(position.stage)) ?? positions[0];
@@ -1510,5 +1531,8 @@ export function OfferMapApp({ initialView = "home", positionId, supabaseConfig =
   if (configured && !authReady) return <div className="auth-loading"><LoaderCircle className="state-spinner" size={34} /><p>正在恢复登录状态…</p></div>;
   if (configured && !session && supabaseConfig) return <LoginScreen supabaseConfig={supabaseConfig} />;
   const activeCompanies = configured ? workspaceCompanies : demoCompanies;
-  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} signOut={session ? signOut : undefined} openPassword={session ? () => setModal("password") : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、分析简历、通用能力画像与 AI 结果会按版本保存" : "多份简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} activateVersion={configured ? activateResumeVersion : async () => {}} deleteVersion={configured ? deleteResumeVersion : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} changeResume={configured ? changeAnalysisResume : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} savePreparation={configured ? saveQuestionPreparation : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} versions={configured ? resumeVersions : demoResumeVersions} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{modal === "password" && <PasswordModal close={() => setModal(null)} save={saveLoginPassword} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
+  const rawUserName = session?.user.user_metadata?.full_name ?? session?.user.user_metadata?.name;
+  const userName = typeof rawUserName === "string" ? rawUserName : undefined;
+  const accountAvatar = createAccountAvatar({ email: session?.user.email, name: userName, accountKey: session?.user.id });
+  return <div className="offermap-app"><AppHeader view={initialView} companies={activeCompanies} userEmail={session?.user.email} userName={userName} accountKey={session?.user.id} signOut={session ? signOut : undefined} openPassword={session ? () => setModal("password") : undefined} /><main className={`page-container view-${initialView}`}><div className={`connection-banner ${configured ? "live" : "demo"}`}><span><i />{configured ? "实时数据已连接" : "演示模式"}</span><p>{configured ? initialView === "analysis" ? "岗位、分析简历、通用能力画像与 AI 结果会按版本保存" : "多份简历 PDF、岗位和求职进度会保存到你的账号" : "配置 Supabase 后即可启用邮箱登录与永久保存"}</p>{workspaceLoading && <LoaderCircle className="state-spinner inline" size={13} />}{workspaceError && <button type="button" onClick={loadWorkspace}>重新加载</button>}</div>{state === "normal" ? <>{initialView === "home" && <HomeView companies={activeCompanies} />}{initialView === "resume" && <ResumeView openUpload={() => setModal("resume")} versions={configured ? resumeVersions : demoResumeVersions} loading={configured && resumesLoading} error={configured ? resumesError : ""} preview={configured ? previewResume : async () => { throw new Error("演示模式暂无 PDF 文件"); }} reparse={configured ? reparseResume : async () => {}} saveSections={configured ? saveResumeSections : async () => {}} activateVersion={configured ? activateResumeVersion : async () => {}} deleteVersion={configured ? deleteResumeVersion : async () => {}} />}{initialView === "positions" && <PositionsView openNewPosition={() => setModal("position")} companies={activeCompanies} onStageUpdate={configured ? updateStage : undefined} onCompanyRename={configured ? renameCompany : undefined} onCompanyDelete={configured ? deleteCompany : undefined} onPositionUpdate={configured ? updatePosition : undefined} onPositionDelete={configured ? deletePosition : undefined} />}{initialView === "map" && <MapView companies={activeCompanies} accountAvatar={accountAvatar} />}{initialView === "analysis" && <AnalysisView tab={analysisTab} setTab={setAnalysisTab} data={configured ? analysisData : null} loading={configured && analysisLoading} runningKind={configured ? analysisRunningKind : null} runningPhase={configured ? analysisRunningPhase : null} error={configured ? analysisError : ""} run={configured ? runPositionAnalysis : async () => {}} changeResume={configured ? changeAnalysisResume : async () => {}} toggleSuggestion={configured ? toggleResumeSuggestion : async () => {}} savePreparation={configured ? saveQuestionPreparation : async () => {}} live={configured} />}</> : <AlternateState view={initialView} state={state} onReset={() => setState("normal")} />}</main>{!configured && <StatusPreview view={initialView} state={state} onChange={setState} />}{modal === "resume" && <UploadModal close={() => setModal(null)} upload={configured ? uploadResume : async () => ({})} versions={configured ? resumeVersions : demoResumeVersions} />}{modal === "position" && <PositionModal close={() => setModal(null)} save={configured ? createPosition : undefined} />}{modal === "password" && <PasswordModal close={() => setModal(null)} save={saveLoginPassword} />}{pdfPreview && <PdfPreviewModal preview={pdfPreview} close={closePdfPreview} />}</div>;
 }

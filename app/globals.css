@@ -72,6 +72,7 @@ a { color: inherit; text-decoration: none; }
 .icon-button { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; display: inline-grid; place-items: center; background: transparent; color: #515154; cursor: pointer; transition: background .18s ease; }
 .icon-button:hover { background: rgba(0, 0, 0, 0.05); }
 .avatar { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; color: white; background: linear-gradient(145deg, #8b919a, #3e434b); font-size: 12px; font-weight: 500; cursor: pointer; }
+.account-avatar { box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 2px 8px rgba(25,35,55,.15); font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.14); }
 
 .page-container { width: min(1240px, calc(100% - 48px)); min-height: calc(100vh - 64px); margin: 0 auto; padding: 52px 0 92px; }
 .card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); box-shadow: var(--shadow); }

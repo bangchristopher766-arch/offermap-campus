@@ -95,6 +95,17 @@ test("reads Supabase public configuration at server runtime", async () => {
   }
 });
 
+test("derives a stable account avatar from the signed-in user", async () => {
+  const component = await readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8");
+  assert.match(component, /function createAccountAvatar/);
+  assert.match(component, /ACCOUNT_AVATAR_GRADIENTS/);
+  assert.match(component, /session\?\.user\.id/);
+  assert.match(component, /firstCharacter\.toUpperCase\(\)/);
+  assert.match(component, /accountAvatar\.label/);
+  assert.match(component, /accountAvatar\.background/);
+  assert.doesNotMatch(component, /aria-label="个人中心"[^>]*>林<\/button>/);
+});
+
 test("implements private PDF resume versions", async () => {
   const [component, listRoute, parseRoute, pdfRoute, reparseRoute, parser, aiParser, aiClient, storage, migration] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
