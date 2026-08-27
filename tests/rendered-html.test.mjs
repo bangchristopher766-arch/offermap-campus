@@ -214,9 +214,12 @@ test("persists grounded resume suggestions and interview maps", async () => {
   assert.match(engine, /thinking: false/);
   assert.match(engine, /isFaithfulResumeRewrite/);
   assert.match(engine, /同一 evidenceId 最多使用一次/);
-  assert.match(engine, /不得把“参与”升级成“负责\/主导”/);
+  assert.match(engine, /把参与升级为负责\/主导/);
   assert.match(resumeRoute, /resume-\$\{phase\}/);
-  assert.match(resumeRoute, /resume-v5-fast-single-call/);
+  assert.match(resumeRoute, /resume-v6-grounded-value-filter/);
+  assert.match(engine, /AI_REASONING_MODEL/);
+  assert.match(engine, /证据审计员/);
+  assert.doesNotMatch(engine, /allowedTokenText/);
   assert.match(analysisRoute, /run\.task === "resume-core" && belongsToCurrentScope\(run\)/);
   assert.match(analysisRoute, /analysis_snapshots/);
   assert.doesNotMatch(analysisRoute, /resume-v4-cohesive-tailored-version/);
@@ -283,6 +286,8 @@ test("saves a private answer preparation workspace for every interview question"
   assert.match(component, /真实案例与个人贡献/);
   assert.match(component, /关键数据/);
   assert.match(component, /保存回答准备/);
+  assert.match(component, /填入回答骨架/);
+  assert.match(component, /可用的真实简历素材/);
   assert.match(preparationRoute, /auth\.getUser/);
   assert.match(preparationRoute, /interview_questions/);
   assert.match(preparationRoute, /target_type.*interview_question/s);
@@ -294,7 +299,7 @@ test("saves a private answer preparation workspace for every interview question"
 });
 
 test("supports role benchmarks, multi-resume bindings, and immutable submission snapshots", async () => {
-  const [component, migration, bindingRoute, benchmarkRoute, applicationRoute, resumesRoute, documentsRoute, analysisRoute] = await Promise.all([
+  const [component, migration, bindingRoute, benchmarkRoute, applicationRoute, resumesRoute, documentsRoute, analysisRoute, engine] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/0004_role_profiles_and_resume_library.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/resume-binding/route.ts", import.meta.url), "utf8"),
@@ -303,6 +308,7 @@ test("supports role benchmarks, multi-resume bindings, and immutable submission 
     readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resume-documents/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/analysis-engine.ts", import.meta.url), "utf8"),
   ]);
   assert.match(component, /岗位通用能力/);
   assert.match(component, /更换分析简历/);
@@ -318,6 +324,11 @@ test("supports role benchmarks, multi-resume bindings, and immutable submission 
   assert.match(bindingRoute, /status: "current"/);
   assert.match(benchmarkRoute, /task: "benchmark"/);
   assert.match(benchmarkRoute, /citation_verified/);
+  assert.match(benchmarkRoute, /benchmark-evidence-v2-fixed-requirements/);
+  assert.match(benchmarkRoute, /runBenchmarkEvidenceAnalysis/);
+  assert.match(engine, /FIXED_REQUIREMENTS/);
+  assert.match(component, /岗位准备结论/);
+  assert.match(component, /跨公司高频缺口/);
   assert.match(applicationRoute, /application_submissions/);
   for (const route of [resumesRoute, documentsRoute, analysisRoute]) {
     assert.match(route, /resumes_resume_document_id_fkey/);

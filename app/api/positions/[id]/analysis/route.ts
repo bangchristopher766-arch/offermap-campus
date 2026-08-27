@@ -5,7 +5,7 @@ import { claimAiRun, loadActiveAiRun } from "@/lib/ai-run-guard";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "evidence-v4-semantic-multi-evidence";
+const PROMPT_VERSION = "evidence-v5-semantic-audited";
 const recommendationTerms = ["用户研究","需求分析","产品设计","数据分析","跨团队","人工智能","大模型","Agent","评测","Prompt","Python","Java","Go","SQL","数据库","增长","留存","转化","活动运营","市场洞察","品牌","渠道","预算"];
 
 function tokenFrom(request: Request) {

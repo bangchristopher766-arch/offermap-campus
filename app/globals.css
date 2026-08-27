@@ -472,6 +472,22 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .analysis-summary span { color: var(--tertiary); font-size: 10px; }
 .analysis-summary strong { margin-top: 5px; font-size: 17px; font-weight: 600; }
 .analysis-summary p { margin: 0 0 0 auto; padding-left: 20px; color: var(--tertiary); font-size: 10px; }
+.job-strategy-card { overflow: hidden; padding: 23px; background: linear-gradient(135deg, #ffffff 0%, #f5f9ff 100%); }
+.job-strategy-heading > span { color: var(--blue); font-size: 10px; font-weight: 600; }
+.job-strategy-heading h2 { margin: 7px 0 6px; font-size: 21px; letter-spacing: -.02em; }
+.job-strategy-heading p { max-width: 700px; margin: 0; color: var(--secondary); font-size: 11px; line-height: 1.6; }
+.job-strategy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.job-strategy-grid > div { padding: 13px 14px; border: 1px solid rgba(0,0,0,.06); border-radius: 13px; background: rgba(255,255,255,.72); }
+.job-strategy-grid small, .job-strategy-grid strong { display: block; }
+.job-strategy-grid small { color: var(--tertiary); font-size: 9px; }
+.job-strategy-grid strong { margin-top: 5px; font-size: 11px; line-height: 1.5; }
+.job-strategy-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 17px; }
+.benchmark-strategy { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 18px 20px; }
+.benchmark-strategy > div { min-width: 0; }
+.benchmark-strategy small, .benchmark-strategy strong { display: block; }
+.benchmark-strategy small { color: var(--tertiary); font-size: 9px; }
+.benchmark-strategy strong { margin-top: 5px; font-size: 11px; line-height: 1.5; }
+.benchmark-strategy p { grid-column: 1 / -1; margin: 1px 0 0; padding-top: 11px; border-top: 1px solid var(--line); color: var(--tertiary); font-size: 9px; }
 .evidence-card { padding: 21px; transition: border-color .2s ease, box-shadow .2s ease; }
 .evidence-card.selected { border-color: rgba(10,132,255,.28); box-shadow: 0 10px 30px rgba(10,132,255,.07); }
 .evidence-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
@@ -651,6 +667,14 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
 .preparation-guidance svg, .preparation-reminder svg { flex: 0 0 auto; margin-top: 1px; }
 .preparation-guidance p, .preparation-reminder p { margin: 0; font-size: 9px; line-height: 1.55; }
 .preparation-guidance strong, .preparation-reminder strong { display: block; margin-bottom: 2px; font-weight: 600; }
+.preparation-guidance { align-items: center; }
+.preparation-guidance p { min-width: 0; flex: 1; }
+.skeleton-button { flex: 0 0 auto; white-space: nowrap; }
+.preparation-source { display: flex; align-items: flex-start; gap: 9px; margin: 10px 23px 0; padding: 12px 13px; border-radius: 12px; color: #2d6747; background: #eef8f1; }
+.preparation-source > svg { flex: 0 0 auto; margin-top: 2px; }
+.preparation-source > div { min-width: 0; }
+.preparation-source strong { display: block; margin-bottom: 5px; font-size: 9px; }
+.preparation-source p { margin: 4px 0 0; color: #426450; font-size: 9px; line-height: 1.55; }
 .preparation-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding: 18px 23px 4px; }
 .preparation-fields label { display: grid; gap: 7px; }
 .preparation-fields label:first-child { grid-column: 1 / -1; }
@@ -814,6 +838,10 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
   .application-progress { overflow-x: auto; }
   .progress-heading, .progress-prep-note { position: sticky; left: 0; }
   .analysis-summary > div { flex: 0 0 auto; }
+  .job-strategy-grid, .benchmark-strategy { grid-template-columns: 1fr; }
+  .benchmark-strategy p { grid-column: auto; }
+  .job-strategy-actions { justify-content: stretch; }
+  .job-strategy-actions button { flex: 1; }
   .rewrite-grid { grid-template-columns: 1fr; }
   .rewrite-grid > svg { margin: -3px auto; transform: rotate(90deg); }
   .tailored-resume-head { flex-direction: column; }
@@ -827,6 +855,8 @@ button.application-stage { margin-top: 9px; cursor: pointer; }
   .preparation-question-list > div { max-height: 348px; }
   .preparation-fields { grid-template-columns: 1fr; }
   .preparation-fields label:first-child { grid-column: auto; }
+  .preparation-guidance { flex-wrap: wrap; }
+  .preparation-guidance .skeleton-button { width: 100%; justify-content: center; }
   .jd-drawer { width: 100%; max-width: none; }
   .jd-meta-grid { grid-template-columns: 1fr; }
   .question-legend { flex-direction: column; gap: 7px; }

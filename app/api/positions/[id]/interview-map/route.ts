@@ -5,10 +5,25 @@ import { claimAiRun } from "@/lib/ai-run-guard";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "interview-v3-fast-single-call";
+const PROMPT_VERSION = "interview-v4-distinct-deep-angles";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+}
+
+function normalizeQuestion(value: string) {
+  return value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function nearDuplicateQuestion(left: string, right: string) {
+  const aText = normalizeQuestion(left);
+  const bText = normalizeQuestion(right);
+  if (!aText || !bText) return aText === bText;
+  const a = new Set(Array.from({ length: Math.max(0, aText.length - 1) }, (_, index) => aText.slice(index, index + 2)));
+  const b = new Set(Array.from({ length: Math.max(0, bText.length - 1) }, (_, index) => bText.slice(index, index + 2)));
+  let overlap = 0;
+  for (const token of a) if (b.has(token)) overlap += 1;
+  return overlap / Math.max(1, a.size + b.size - overlap) >= 0.62;
 }
 
 async function sha256(value: string) {
@@ -100,7 +115,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     let insertedQuestions = 0;
     for (const item of validated.questions) {
-      if (phase === "expand" && current.some((saved) => saved.main_question.trim() === item.mainQuestion.trim())) continue;
+      if (phase === "expand" && current.some((saved) => nearDuplicateQuestion(saved.main_question, item.mainQuestion))) continue;
       let requirementIds = item.requirementIds.filter((id) => validRequirementIds.has(id));
       if (!requirementIds.length) {
         requirementIds = evidence.filter((requirement) => item.jdQuotes.includes(requirement.jd_quote)).map((requirement) => requirement.id).slice(0, 4);

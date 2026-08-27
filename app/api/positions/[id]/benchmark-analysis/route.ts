@@ -1,10 +1,10 @@
-import { runAnalysis } from "@/lib/analysis-engine";
+import { runBenchmarkEvidenceAnalysis } from "@/lib/analysis-engine";
 import { getAiConfiguration, isAiConfigured } from "@/lib/ai-client";
 import { positionCategorySchema } from "@/lib/analysis-schema";
 import { createUserSupabase } from "@/lib/supabase";
 
 export const runtime = "edge";
-const PROMPT_VERSION = "benchmark-evidence-v1-curated-seed";
+const PROMPT_VERSION = "benchmark-evidence-v2-fixed-requirements";
 const tokenFrom = (request: Request) => request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
 
 function normalize(value: string) {
@@ -52,7 +52,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const requirements = (Array.isArray(profile.role_requirements) ? profile.role_requirements : []).sort((a, b) => a.display_order - b.display_order);
     if (!requirements.length) return Response.json({ error: "岗位画像尚未配置能力要求" }, { status: 409 });
 
-    const syntheticJd = requirements.map((item, index) => `${index + 1}. ${item.label}：${item.description}`).join("\n");
     const config = getAiConfiguration();
     const inputHash = `${position.position_revision}:${resume.content_hash}:${profile.id}:${profile.version}:${PROMPT_VERSION}`;
     const { data: active } = await supabase.from("ai_runs").select("id,task,created_at").eq("position_id", id).eq("status", "processing").order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -74,14 +73,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }).select("id").single();
     if (runError) throw runError;
     runId = run.id;
-    const result = await runAnalysis({ kind: "evidence", category: positionCategorySchema.parse(position.category), jd: syntheticJd, resume: resume.parsed_text, structuredResume: resume.structured_content });
-    const evidenceResult = result.data as { requirements: Array<{ requirement?: string; jdQuote?: string; status: "strong" | "partial" | "missing"; resumeQuote?: string; resumeQuotes?: string[]; rationale: string; action: string }> };
+    const result = await runBenchmarkEvidenceAnalysis({
+      category: positionCategorySchema.parse(position.category),
+      resume: resume.parsed_text,
+      structuredResume: resume.structured_content,
+      requirements: requirements.map((item) => ({
+        id: item.id,
+        label: item.label,
+        description: item.description,
+        prevalenceLevel: item.prevalence_level,
+      })),
+    });
+    const evidenceResult = result.data;
     await supabase.from("benchmark_evidence").delete().eq("position_id", id).eq("resume_version_id", resume.id).eq("role_profile_id", profile.id);
-    const unusedResults = [...evidenceResult.requirements];
+    const resultById = new Map(evidenceResult.requirements.map((item) => [item.id, item]));
     const rows = requirements.map((requirement) => {
-      const matchedIndex = unusedResults.findIndex((item) => item.jdQuote?.includes(requirement.label) || item.requirement?.includes(requirement.label));
-      const item = matchedIndex >= 0 ? unusedResults.splice(matchedIndex, 1)[0] : undefined;
-      const quotes = item?.resumeQuotes?.length ? item.resumeQuotes : item?.resumeQuote ? [item.resumeQuote] : [];
+      const item = resultById.get(requirement.id);
+      const quotes = item?.resumeQuotes ?? [];
       return {
         user_id: userData.user.id,
         position_id: id,
@@ -92,7 +100,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         status: item ? item.status : "uncertain",
         resume_quotes: quotes,
         rationale: item?.rationale ?? "模型未能稳定完成这一项判断，已降级为待确认。",
-        missing_information: item?.status === "partial" || item?.status === "missing" ? item.action : "",
+        missing_information: item?.missingInformation ?? "",
         action: item?.action ?? "补充可定位的真实经历后重新分析。",
         confidence: requirement.confidence,
         citation_verified: quotes.every((quote: string) => resume.parsed_text.includes(quote)),
