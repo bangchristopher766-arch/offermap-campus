@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
     const [{ data, error }, { data: activeBindings }, { data: documents, error: documentsError }] = await Promise.all([supabase
       .from("resumes")
-      .select("id,name,version,document_version,resume_document_id,file_size,page_count,parse_status,structured_content,created_at,updated_at,resume_documents(id,name,direction,is_default,current_version_id)")
+      .select("id,name,version,document_version,resume_document_id,file_size,page_count,parse_status,structured_content,created_at,updated_at,resume_documents:resume_documents!resumes_resume_document_id_fkey(id,name,direction,is_default,current_version_id)")
       .order("version", { ascending: false }),
     supabase.from("position_resume_bindings").select("resume_version_id").eq("status", "current"),
     supabase.from("resume_documents").select("id,name,direction,is_default,current_version_id,created_at,updated_at").is("archived_at", null).order("is_default", { ascending: false }).order("updated_at", { ascending: false })]);

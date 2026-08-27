@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     if (!userData.user) return Response.json({ error: "请先登录" }, { status: 401 });
     const { data, error } = await supabase
       .from("resume_documents")
-      .select("id,name,direction,is_default,current_version_id,archived_at,created_at,updated_at,resumes(id,name,version,document_version,file_size,page_count,parse_status,structured_content,created_at,updated_at)")
+      .select("id,name,direction,is_default,current_version_id,archived_at,created_at,updated_at,resumes:resumes!resumes_resume_document_id_fkey(id,name,version,document_version,file_size,page_count,parse_status,structured_content,created_at,updated_at)")
       .is("archived_at", null)
       .order("is_default", { ascending: false })
       .order("updated_at", { ascending: false });

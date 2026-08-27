@@ -294,12 +294,15 @@ test("saves a private answer preparation workspace for every interview question"
 });
 
 test("supports role benchmarks, multi-resume bindings, and immutable submission snapshots", async () => {
-  const [component, migration, bindingRoute, benchmarkRoute, applicationRoute] = await Promise.all([
+  const [component, migration, bindingRoute, benchmarkRoute, applicationRoute, resumesRoute, documentsRoute, analysisRoute] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/0004_role_profiles_and_resume_library.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/resume-binding/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/benchmark-analysis/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/positions/[id]/application/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/resume-documents/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/analysis/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(component, /岗位通用能力/);
   assert.match(component, /更换分析简历/);
@@ -316,6 +319,9 @@ test("supports role benchmarks, multi-resume bindings, and immutable submission 
   assert.match(benchmarkRoute, /task: "benchmark"/);
   assert.match(benchmarkRoute, /citation_verified/);
   assert.match(applicationRoute, /application_submissions/);
+  for (const route of [resumesRoute, documentsRoute, analysisRoute]) {
+    assert.match(route, /resumes_resume_document_id_fkey/);
+  }
 });
 
 test("passes the 12-sample four-category batch contract", async () => {

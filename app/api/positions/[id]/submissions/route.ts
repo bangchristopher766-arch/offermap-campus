@@ -24,7 +24,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const result = await owned(request, id);
     if ("error" in result) return result.error;
     const { data, error } = await result.supabase.from("application_submissions")
-      .select("id,resume_version_id,submitted_at,channel,note,created_at,resumes(id,name,version,document_version,resume_documents(name,direction))")
+      .select("id,resume_version_id,submitted_at,channel,note,created_at,resumes(id,name,version,document_version,resume_documents:resume_documents!resumes_resume_document_id_fkey(name,direction))")
       .eq("position_id", id).order("submitted_at", { ascending: false });
     if (error) throw error;
     return Response.json({ data: data ?? [] });

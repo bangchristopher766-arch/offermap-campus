@@ -29,7 +29,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const [{ data: position, error: positionError }, { data: documents, error: documentsError }, { data: binding }] = await Promise.all([
       supabase.from("positions").select("id,title,jd_text,resume_id").eq("id", id).maybeSingle(),
-      supabase.from("resume_documents").select("id,name,direction,is_default,current_version_id,resumes(id,name,version,document_version,parsed_text,file_size,page_count,created_at,updated_at)").is("archived_at", null).order("is_default", { ascending: false }),
+      supabase.from("resume_documents").select("id,name,direction,is_default,current_version_id,resumes:resumes!resumes_resume_document_id_fkey(id,name,version,document_version,parsed_text,file_size,page_count,created_at,updated_at)").is("archived_at", null).order("is_default", { ascending: false }),
       supabase.from("position_resume_bindings").select("id,resume_version_id,selected_by,selected_at").eq("position_id", id).eq("status", "current").maybeSingle(),
     ]);
     if (positionError) throw positionError;

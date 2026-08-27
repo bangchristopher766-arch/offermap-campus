@@ -28,7 +28,7 @@ async function loadPosition(supabase: ReturnType<typeof createUserSupabase>, id:
 }
 
 async function loadResumeSummary(supabase: ReturnType<typeof createUserSupabase>, resumeId?: string | null) {
-  let query = supabase.from("resumes").select("id,name,version,document_version,resume_document_id,structured_content,resume_documents(id,name,direction,is_default)");
+  let query = supabase.from("resumes").select("id,name,version,document_version,resume_document_id,structured_content,resume_documents:resume_documents!resumes_resume_document_id_fkey(id,name,direction,is_default)");
   query = resumeId ? query.eq("id", resumeId) : query.order("version", { ascending: false }).limit(1);
   const { data, error } = await query.maybeSingle();
   if (error) throw error;
@@ -130,9 +130,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       loadResumeSummary(supabase, selectedResumeId),
       loadActiveAiRun(supabase, id),
       supabase.from("ai_runs").select("id,task,model,status,duration_ms,input_tokens,output_tokens,error_code,position_revision,resume_version_id,role_profile_id,role_profile_version,created_at,completed_at").eq("position_id", id).order("created_at", { ascending: false }).limit(30),
-      supabase.from("resume_documents").select("id,name,direction,is_default,current_version_id,resumes(id,name,version,document_version,parsed_text,file_size,page_count,updated_at)").is("archived_at", null).order("is_default", { ascending: false }),
+      supabase.from("resume_documents").select("id,name,direction,is_default,current_version_id,resumes:resumes!resumes_resume_document_id_fkey(id,name,version,document_version,parsed_text,file_size,page_count,updated_at)").is("archived_at", null).order("is_default", { ascending: false }),
       position.role_profile_id ? supabase.from("benchmark_evidence").select("id,status,resume_quotes,rationale,missing_information,action,confidence,citation_verified,user_confirmed,ignored_at,role_profile_id,role_profile_version,resume_version_id,role_requirements(id,label,description,category,prevalence_level,source_count,display_order),role_profiles(id,version,industry,seniority,product_type,generated_at,source_summary,role_taxonomies(id,canonical_title,role_family))").eq("position_id", id).eq("resume_version_id", selectedResumeId).eq("role_profile_id", position.role_profile_id).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
-      supabase.from("application_submissions").select("id,resume_version_id,submitted_at,channel,note,resumes(id,name,version,document_version,resume_documents(name,direction))").eq("position_id", id).order("submitted_at", { ascending: false }),
+      supabase.from("application_submissions").select("id,resume_version_id,submitted_at,channel,note,resumes(id,name,version,document_version,resume_documents:resume_documents!resumes_resume_document_id_fkey(name,direction))").eq("position_id", id).order("submitted_at", { ascending: false }),
       supabase.from("analysis_snapshots").select("id,analysis_type,position_revision,resume_version_id,role_profile_id,role_profile_version,prompt_version,model,created_at").eq("position_id", id).order("created_at", { ascending: false }).limit(30),
     ]);
     const questions = await enrichQuestionPreparations(supabase, rawQuestions);
