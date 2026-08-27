@@ -34,9 +34,29 @@ test("renders the independent OfferMap workspace routes", async () => {
   assert.match(map, /个人求职地图/);
   assert.match(analysis, /当前 JD/);
   assert.match(analysis, /岗位通用能力/);
+  assert.match(analysis, /岗位情报/);
   assert.match(analysis, /定制简历/);
   assert.match(analysis, /面试追问地图/);
   assert.doesNotMatch(home, /codex-preview|Your site is taking shape|react-loading-skeleton/);
+});
+
+test("adds private, cited web research without sending resume data to search", async () => {
+  const [component, route, research] = await Promise.all([
+    readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/positions/[id]/research/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/web-research.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(component, /function ResearchPanel/);
+  assert.match(component, /公开来源/);
+  assert.match(component, /不会把你的简历发送给搜索服务/);
+  assert.match(route, /auth\.getUser/);
+  assert.match(route, /task: "research"/);
+  assert.match(route, /result_snapshot/);
+  assert.match(research, /TAVILY_API_KEY/);
+  assert.match(research, /忽略/);
+  assert.match(research, /sourceIds/);
+  assert.match(research, /include_raw_content: false/);
+  assert.doesNotMatch(research, /resume/i);
 });
 
 test("ships the four fixed position categories and semantic verification guardrails", async () => {
