@@ -235,7 +235,7 @@ type PositionAnalysisData = {
 };
 
 const NAV_ITEMS: Array<{ key: OfferMapView; label: string; href: string }> = [
-  { key: "home", label: "首页", href: "/" },
+  { key: "home", label: "首页", href: "/workspace" },
   { key: "resume", label: "我的简历", href: "/resume" },
   { key: "positions", label: "目标岗位", href: "/positions" },
   { key: "map", label: "求职地图", href: "/map" },
@@ -488,7 +488,7 @@ function AppHeader({ view, companies, userEmail, userName, accountKey, signOut, 
     <>
       <header className="app-header">
         <div className="header-inner">
-          <a className="brand" href="/" aria-label="OfferMap 首页">
+          <a className="brand" href="/workspace" aria-label="OfferMap 工作台首页">
             <span className="brand-symbol"><Route size={18} /></span><span>OfferMap</span>
           </a>
           <nav className="main-nav" aria-label="主导航">
@@ -502,7 +502,7 @@ function AppHeader({ view, companies, userEmail, userName, accountKey, signOut, 
             </div>
             <div className="header-menu-wrap">
               <button className="avatar account-avatar" style={{ background: accountAvatar.background }} type="button" onClick={() => { setProfileOpen(!profileOpen); setCreateOpen(false); }} aria-label={`${accountAvatar.displayName}的个人中心`} aria-expanded={profileOpen}>{accountAvatar.label}</button>
-              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar account-avatar" style={{ background: accountAvatar.background }}>{accountAvatar.label}</span><div><strong>{accountAvatar.displayName}</strong><small>{userEmail ?? "演示账号 · 求职方向"}</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a>{signOut ? <><button type="button" onClick={() => { setProfileOpen(false); openPassword?.(); }}><ShieldCheck size={15} />设置登录密码</button><button type="button" onClick={signOut}><LogOut size={15} />退出登录</button></> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
+              {profileOpen && <div className="header-popover profile-menu"><div className="profile-summary"><span className="avatar account-avatar" style={{ background: accountAvatar.background }}>{accountAvatar.label}</span><div><strong>{accountAvatar.displayName}</strong><small>{userEmail ?? "演示账号 · 求职方向"}</small></div></div><a href="/resume"><FileText size={15} />母版简历</a><a href="/map"><Map size={15} />我的求职地图</a><a href="/"><Route size={15} />使用指南</a>{signOut ? <><button type="button" onClick={() => { setProfileOpen(false); openPassword?.(); }}><ShieldCheck size={15} />设置登录密码</button><button type="button" onClick={signOut}><LogOut size={15} />退出登录</button></> : <div className="profile-plan"><Sparkles size={13} />演示账号 · 配置 Supabase 后启用登录</div>}</div>}
             </div>
           </div>
         </div>
