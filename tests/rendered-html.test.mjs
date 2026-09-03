@@ -31,6 +31,7 @@ test("renders the independent OfferMap workspace routes", async () => {
   assert.match(home, /href="\/map" class="entry-card card"/);
   assert.match(resume, /简历库/);
   assert.match(resume, /多简历 · 不可变版本/);
+  assert.match(resume, /8月16日 22:40/);
   assert.match(map, /个人求职地图/);
   assert.match(analysis, /当前 JD/);
   assert.match(analysis, /岗位通用能力/);
@@ -38,6 +39,37 @@ test("renders the independent OfferMap workspace routes", async () => {
   assert.match(analysis, /定制简历/);
   assert.match(analysis, /面试追问地图/);
   assert.doesNotMatch(home, /codex-preview|Your site is taking shape|react-loading-skeleton/);
+});
+
+test("renders resume timestamps in a deterministic SSR timezone", async () => {
+  const component = await readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8");
+  const formatterStart = component.indexOf("function formatDisplayDate");
+  const formatterEnd = component.indexOf("\n}\n\nfunction ResumeView", formatterStart) + 2;
+  assert.notEqual(formatterStart, -1);
+  assert.ok(formatterEnd > formatterStart);
+  const formatter = component.slice(formatterStart, formatterEnd);
+
+  assert.match(component, /const DISPLAY_TIME_ZONE = "Asia\/Shanghai"/);
+  assert.equal((formatter.match(/timeZone: DISPLAY_TIME_ZONE/g) ?? []).length, 2);
+  assert.match(formatter, /Number\.isNaN\(date\.getTime\(\)\).*return "时间未知"/s);
+  for (const field of [
+    "current.updated_at",
+    "version.updated_at",
+    "latestSubmission.submitted_at",
+    "research.generatedAt",
+    "profile.generated_at",
+    "option.updatedAt",
+    "item.created_at",
+    "question.preparation.updatedAt",
+  ]) {
+    assert.ok(component.includes(`formatDisplayDate(${field}`), `${field} must use the hydration-safe formatter`);
+  }
+  assert.doesNotMatch(component, /nextEvent\.toLocale(?:String|DateString|TimeString)/);
+  assert.doesNotMatch(component, /new Date\([^)]*(?:updated_at|submitted_at|generated_at|created_at)[^)]*\)\.toLocale(?:String|DateString|TimeString)/);
+
+  const response = await render("/resume");
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /8月16日 22:40/);
 });
 
 test("adds private, cited web research without sending resume data to search", async () => {
@@ -127,13 +159,14 @@ test("derives a stable account avatar from the signed-in user", async () => {
 });
 
 test("implements private PDF resume versions", async () => {
-  const [component, listRoute, parseRoute, pdfRoute, reparseRoute, parser, aiParser, aiClient, storage, migration] = await Promise.all([
+  const [component, listRoute, parseRoute, pdfRoute, reparseRoute, parser, documentParser, aiParser, aiClient, storage, migration] = await Promise.all([
     readFile(new URL("../app/components/OfferMapApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/parse/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/[id]/pdf/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/resumes/[id]/reparse/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/resume-parser.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/pdf-document-parser.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/resume-ai-parser.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/ai-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase-storage.ts", import.meta.url), "utf8"),
@@ -150,14 +183,24 @@ test("implements private PDF resume versions", async () => {
   assert.match(pdfRoute, /Content-Type.*application\/pdf/s);
   assert.match(pdfRoute, /%PDF-/);
   assert.match(reparseRoute, /parseResumePdf/);
-  assert.match(parser, /extractTextItems/);
-  assert.match(parser, /parser_version: 2/);
-  assert.match(parser, /normalize\("NFKC"\)/);
+  assert.match(documentParser, /extractTextItems/);
+  assert.match(documentParser, /PDF_PARSER_VERSION = 5/);
+  assert.match(documentParser, /normalize\("NFKC"\)/);
+  assert.match(documentParser, /columnCount/);
+  assert.match(documentParser, /PdfParseError/);
+  assert.match(parser, /discoverResumeSections/);
+  assert.match(parser, /originalTitle/);
+  assert.match(parser, /sourceBlockIds/);
+  assert.doesNotMatch(parser, /SECTION_RULES/);
   assert.match(parser, /个人技能/);
-  assert.match(aiParser, /lineIds/);
+  assert.match(aiParser, /blockIds/);
+  assert.match(aiParser, /validateCompletePartition/);
+  assert.doesNotMatch(aiParser, /lineIds/);
   assert.match(aiClient, /DASHSCOPE_API_KEY/);
   assert.match(storage, /verified\.byteLength !== bytes\.byteLength/);
   assert.match(component, /PdfPreviewModal/);
+  assert.match(component, /CURRENT_PDF_PARSER_VERSION/);
+  assert.match(component, /quality\?\.manually_corrected/);
   assert.doesNotMatch(component, /window\.open/);
   assert.match(migration, /resume-pdfs/);
   assert.match(migration, /auth\.uid\(\)/);

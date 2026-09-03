@@ -6,7 +6,8 @@
 - `npm run build`: Vinext production build and configured TypeScript verification.
 - `npm run test:batch`: runs `scripts/run-sample-batch.mjs` against the 12 fixtures in `tests/fixtures/analysis-samples.json` and writes `tests/reports/analysis-batch-report.json`.
 - `node --test tests/rendered-html.test.mjs`: checks route/UI/source contracts and worker-rendered HTML.
-- `npm test`: full gate in order—build, batch contracts, then rendered HTML tests.
+- `node --test tests/pdf-parser.test.mjs`: focused text-layer PDF layout, dynamic-section, AI-fallback and typed-error tests.
+- `npm test`: full gate in order—build, batch contracts, then every `tests/*.test.mjs` Node test.
 - `npm run test:isolation:live`: optional two-account Supabase boundary test; it requires live test credentials/tokens and is not part of the default offline gate.
 
 ## Test selection

@@ -6,3 +6,4 @@ The backend is implemented as Next/Vinext App Router handlers under `app/api/`. 
 |---|---|
 | [API routes](./api-routes.md) | Handler structure, authentication, validation and responses |
 | [Service boundaries](./service-boundaries.md) | When routes query Supabase directly and when they delegate |
+| [PDF parsing](./pdf-parsing.md) | Text-layer extraction, dynamic sections, AI fallback and error contracts |

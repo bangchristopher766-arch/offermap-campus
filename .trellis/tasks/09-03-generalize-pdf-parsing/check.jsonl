@@ -1,0 +1,4 @@
+{"file":".trellis/spec/testing/test-layers-and-commands.md","reason":"解析 fixture、构建、lint 和产品契约测试要求"}
+{"file":".trellis/spec/security/untrusted-inputs-and-secrets.md","reason":"PDF 文本与 AI 输入均属于不可信输入"}
+{"file":".trellis/spec/ai-domain/grounding-and-research.md","reason":"AI 结构化必须回指原文 block，不能补充事实"}
+{"file":".trellis/tasks/09-03-generalize-pdf-parsing/research/current-pdf-pipeline.md","reason":"核对现有链路兼容性和已知局限是否被覆盖"}

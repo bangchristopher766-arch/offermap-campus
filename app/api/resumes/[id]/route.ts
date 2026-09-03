@@ -1,5 +1,6 @@
 import { createUserSupabase } from "@/lib/supabase";
 import { z } from "zod";
+import { PDF_PARSER_VERSION } from "@/lib/pdf-document-parser";
 
 const sectionSchema = z.object({
   title: z.string().trim().min(1).max(40),
@@ -47,7 +48,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       : {};
     const structuredContent = {
       ...previous,
-      parser_version: 4,
+      parser_version: PDF_PARSER_VERSION,
       sections,
       quality: {
         level: "high",

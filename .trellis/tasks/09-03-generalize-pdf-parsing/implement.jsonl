@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/api-routes.md","reason":"解析上传与重新解析接口的鉴权、验证、错误和响应契约"}
+{"file":".trellis/spec/backend/service-boundaries.md","reason":"将通用提取、简历适配和 API 编排保持在正确服务边界"}
+{"file":".trellis/spec/data/private-storage.md","reason":"原始 PDF 私有存储、上传校验和失败回滚约束"}
+{"file":".trellis/spec/ai-domain/provider-and-output-contracts.md","reason":"AI block 归类的结构化输出、超时和降级约束"}
+{"file":".trellis/tasks/09-03-generalize-pdf-parsing/research/current-pdf-pipeline.md","reason":"现有 PDF 解析链路、兼容面和已确认局限"}

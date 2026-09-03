@@ -2,6 +2,7 @@ import { createUserSupabase } from "@/lib/supabase";
 import { parseResumePdf } from "@/lib/resume-parser";
 import { enhanceResumeStructure } from "@/lib/resume-ai-parser";
 import { uploadPrivatePdf } from "@/lib/supabase-storage";
+import { PdfParseError } from "@/lib/pdf-document-parser";
 
 export const runtime = "edge";
 const EMPTY_FILE_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -38,7 +39,19 @@ export async function POST(request: Request) {
       if (error) throw error;
       if (!data) return Response.json({ error: "目标简历不存在或你无权更新" }, { status: 404 });
       resumeDocument = data;
-    } else {
+    }
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const signature = new TextDecoder().decode(bytes.slice(0, 5));
+    if (signature !== "%PDF-") return Response.json({ error: "上传内容不是有效 PDF" }, { status: 422 });
+    const contentHash = await sha256(bytes);
+    // PDF.js transfers/detaches its input buffer. Parse a copy so the original
+    // bytes remain intact for hashing, private storage, and upload verification.
+    const result = await parseResumePdf(bytes.slice());
+    const text = result.text.split(String.fromCharCode(0)).join("").trim();
+    const structuredContent = await enhanceResumeStructure(result.document, result.structuredContent);
+
+    if (!resumeDocument) {
       const { count, error: countError } = await supabase.from("resume_documents").select("id", { count: "exact", head: true }).is("archived_at", null);
       if (countError) throw countError;
       const { data, error } = await supabase.from("resume_documents").insert({
@@ -50,17 +63,6 @@ export async function POST(request: Request) {
       if (error) throw error;
       resumeDocument = data;
     }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const signature = new TextDecoder().decode(bytes.slice(0, 5));
-    if (signature !== "%PDF-") return Response.json({ error: "上传内容不是有效 PDF" }, { status: 422 });
-    const contentHash = await sha256(bytes);
-    // PDF.js transfers/detaches its input buffer. Parse a copy so the original
-    // bytes remain intact for hashing, private storage, and upload verification.
-    const result = await parseResumePdf(bytes.slice());
-    const text = result.text.split(String.fromCharCode(0)).join("").trim();
-    if (text.length < 80) return Response.json({ error: "没有识别到足够文字，暂不支持扫描版 PDF" }, { status: 422 });
-    const structuredContent = await enhanceResumeStructure(text, result.structuredContent);
-
     const { data: hashDuplicate } = await supabase
       .from("resumes")
       .select("id,name,version,document_version,resume_document_id,file_size,page_count,pdf_path,structured_content,created_at,updated_at")
@@ -144,6 +146,7 @@ export async function POST(request: Request) {
     return Response.json({ data: resume, character_count: text.length }, { status: 201 });
   } catch (error) {
     if (uploadedPath) await supabase.storage.from("resume-pdfs").remove([uploadedPath]);
+    if (error instanceof PdfParseError) return Response.json({ error: error.message, code: error.code }, { status: 422 });
     const message = error instanceof Error ? error.message : "PDF 解析失败";
     const migrationMissing = /pdf_path|structured_content|resume-pdfs|bucket|resume_document|document_version/i.test(message);
     const storageFailure = /上传|存储|线上 PDF|校验失败/i.test(message);

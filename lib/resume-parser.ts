@@ -1,8 +1,14 @@
-import { extractTextItems, getDocumentProxy } from "unpdf";
+import { cleanPdfText, parsePdfDocument, PDF_PARSER_VERSION } from "@/lib/pdf-document-parser";
+import type { DocumentBlock, ParsedDocument } from "@/lib/pdf-document-parser";
+
+export type ResumeSectionKind = "summary" | "personal" | "education" | "experience" | "projects" | "research" | "awards" | "skills" | "profile";
 
 export type ResumeSection = {
   title: string;
   items: string[];
+  originalTitle?: string | null;
+  normalizedKind?: ResumeSectionKind | string | null;
+  sourceBlockIds?: string[];
 };
 
 export type ResumeParseQuality = {
@@ -10,151 +16,151 @@ export type ResumeParseQuality = {
   detected_sections: number;
   total_lines: number;
   warnings: string[];
+  method?: string;
+  ai_enhanced?: boolean;
 };
 
-type PositionedItem = {
-  str: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  fontSize: number;
+export type ResumeStructuredContent = {
+  parser_version: number;
+  sections: ResumeSection[];
+  quality: ResumeParseQuality;
+  document?: ParsedDocument;
 };
 
-type LayoutLine = {
-  text: string;
-  y: number;
-  fontSize: number;
-};
-
-const SECTION_RULES: Array<{ title: string; aliases: string[] }> = [
-  { title: "教育经历", aliases: ["教育经历", "教育背景", "教育"] },
-  { title: "实习经历", aliases: ["实习经历", "工作经历", "工作经验", "实践经历", "职业经历"] },
-  { title: "项目经历", aliases: ["项目经历", "项目经验", "个人项目", "项目"] },
-  { title: "校园经历", aliases: ["校园经历", "学生工作", "社团经历", "校内经历", "社会实践"] },
-  { title: "研究经历", aliases: ["研究经历", "科研经历", "论文与研究"] },
-  { title: "获奖经历", aliases: ["获奖经历", "荣誉奖项", "奖项荣誉", "荣誉与奖励"] },
-  { title: "技能与证书", aliases: ["专业技能", "个人技能", "技能证书", "技能与证书", "语言能力", "其他技能", "技能", "证书"] },
-  { title: "个人信息", aliases: ["个人信息", "基本信息", "联系方式"] },
-  { title: "自我评价", aliases: ["自我评价", "个人总结", "个人优势", "关于我"] },
+const SECTION_KIND_HINTS: Array<{ kind: ResumeSectionKind; aliases: string[] }> = [
+  { kind: "personal", aliases: ["个人信息", "基本信息", "联系方式", "personal information", "contact"] },
+  { kind: "education", aliases: ["教育经历", "教育背景", "教育", "education", "academic background"] },
+  { kind: "experience", aliases: ["实习经历", "工作经历", "工作经验", "实践经历", "职业经历", "experience", "work experience", "employment"] },
+  { kind: "projects", aliases: ["项目经历", "项目经验", "个人项目", "projects", "selected projects"] },
+  { kind: "research", aliases: ["研究经历", "科研经历", "论文与研究", "research", "publications"] },
+  { kind: "awards", aliases: ["获奖经历", "荣誉奖项", "奖项荣誉", "荣誉与奖励", "awards", "honors"] },
+  { kind: "skills", aliases: ["专业技能", "个人技能", "技能证书", "技能与证书", "语言能力", "其他技能", "skills", "certifications", "languages"] },
+  { kind: "profile", aliases: ["自我评价", "个人总结", "个人优势", "关于我", "profile", "summary", "about me"] },
 ];
 
-function cleanText(value: string) {
-  return value
-    .normalize("NFKC")
-    .replace(/[\t\u00a0]+/g, " ")
-    .replace(/([\p{Script=Han}]{2,8})(?:\s*\1){1,}/gu, "$1")
-    .replace(/\s{2,}/g, " ")
-    .replace(/^[|｜·•\s]+|[|｜·•\s]+$/g, "")
-    .trim();
+function median(values: number[]) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function groupPageLines(items: PositionedItem[]): LayoutLine[] {
-  const visible = items.filter((item) => cleanText(item.str));
-  const groups: Array<{ y: number; fontSize: number; items: PositionedItem[] }> = [];
+function dominantBodyFontSize(blocks: DocumentBlock[]) {
+  const values = blocks.map((block) => block.style.fontSize).filter((value) => value > 0);
+  if (!values.length) return 10;
+  const counts = new Map<number, number>();
+  for (const value of values) {
+    const bucket = Math.round(value * 2) / 2;
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+  }
+  const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  return ranked[0]?.[1] > 1 ? ranked[0][0] : median(values);
+}
 
-  for (const item of [...visible].sort((a, b) => b.y - a.y || a.x - b.x)) {
-    const tolerance = Math.max(2.2, item.fontSize * 0.32);
-    const group = groups.find((candidate) => Math.abs(candidate.y - item.y) <= tolerance);
-    if (group) {
-      const duplicate = group.items.some((existing) => existing.str === item.str && Math.abs(existing.x - item.x) < 1.5);
-      if (!duplicate) group.items.push(item);
-      group.y = (group.y + item.y) / 2;
-      group.fontSize = Math.max(group.fontSize, item.fontSize);
-    } else {
-      groups.push({ y: item.y, fontSize: item.fontSize, items: [item] });
+function isContentBlock(block: DocumentBlock) {
+  return !["header", "footer", "page-number"].includes(block.blockType);
+}
+
+function looksLikeTitle(text: string) {
+  const value = cleanPdfText(text);
+  if (!value || value.length > 60 || /[。！？!?；;]$/.test(value)) return false;
+  if (/^(?:19|20)\d{2}[./年-]|^[·•●▪◦]|@|https?:\/\//i.test(value)) return false;
+  return value.split(/\s+/).filter(Boolean).length <= 8;
+}
+
+function headingScore(block: DocumentBlock, previous: DocumentBlock | undefined, bodyFontSize: number) {
+  if (!looksLikeTitle(block.text)) return 0;
+  let score = block.text.length <= 32 ? 1 : 0;
+  if (block.style.fontSize >= bodyFontSize * 1.16) score += 3;
+  if (block.style.fontWeight === "bold") score += 1;
+  if (/^[A-Z][A-Z\d &/+-]{2,}$/.test(block.text)) score += 3;
+  if (previous?.pageNumber === block.pageNumber && previous.columnIndex === block.columnIndex) {
+    const gapAbove = previous.bbox.y - (block.bbox.y + block.bbox.height);
+    const followsHeadingStyle = previous.style.fontSize >= bodyFontSize * 1.16 || previous.style.fontWeight === "bold" || /^[A-Z][A-Z\d &/+-]{2,}$/.test(previous.text);
+    if (!followsHeadingStyle && gapAbove >= Math.max(bodyFontSize * 1.35, block.style.fontSize * 1.1)) score += 2;
+  }
+  return score;
+}
+
+function normalizedKindForTitle(title: string): ResumeSectionKind | null {
+  const compact = cleanPdfText(title).toLocaleLowerCase().replace(/[：:｜|·•\s]/g, "");
+  const match = SECTION_KIND_HINTS.find((candidate) => candidate.aliases.some((alias) => compact === alias.toLocaleLowerCase().replace(/\s/g, "")));
+  return match?.kind ?? null;
+}
+
+export function discoverResumeSections(document: ParsedDocument): ResumeSection[] {
+  const blocks = document.pages.flatMap((page) => page.blocks).filter(isContentBlock);
+  const bodyFontSize = dominantBodyFontSize(blocks);
+  const leadingOversizedCount = blocks.slice(0, 2).filter((block) => block.pageNumber === 1 && block.style.fontSize >= bodyFontSize * 1.3).length;
+  const headingIds = new Set<string>();
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    // The first one or two oversized lines are commonly the candidate's name
+    // and professional title. Treat them as document identity content until a
+    // body-sized line establishes context, instead of presenting the name as a
+    // resume section heading.
+    const leadingDocumentTitle = block.pageNumber === 1 && (
+      (index < 2 && leadingOversizedCount === 2 && block.style.fontSize >= bodyFontSize * 1.3)
+      || (index === 0 && block.style.fontSize >= bodyFontSize * 1.7)
+    );
+    if (!leadingDocumentTitle && headingScore(block, blocks[index - 1], bodyFontSize) >= 3) {
+      block.blockType = "heading";
+      headingIds.add(block.id);
     }
   }
 
-  return groups
-    .sort((a, b) => b.y - a.y)
-    .map((group) => {
-      const sorted = group.items.sort((a, b) => a.x - b.x);
-      let text = "";
-      let previous: PositionedItem | undefined;
-      for (const item of sorted) {
-        const value = cleanText(item.str);
-        if (!value) continue;
-        const gap = previous ? item.x - (previous.x + previous.width) : 0;
-        const needsSpace = Boolean(previous) && (gap > Math.max(1.5, item.fontSize * 0.12) || /[A-Za-z0-9]$/.test(text) || /^[A-Za-z0-9]/.test(value));
-        text += `${needsSpace ? " " : ""}${value}`;
-        previous = item;
-      }
-      return { text: cleanText(text), y: group.y, fontSize: group.fontSize };
-    })
-    .filter((line) => line.text);
+  const sections: ResumeSection[] = [];
+  let current: ResumeSection = { title: "简历摘要", originalTitle: null, normalizedKind: "summary", items: [], sourceBlockIds: [] };
+  for (const block of blocks) {
+    if (headingIds.has(block.id)) {
+      if (current.items.length || current.sourceBlockIds?.length) sections.push(current);
+      current = {
+        title: block.text,
+        originalTitle: block.text,
+        normalizedKind: normalizedKindForTitle(block.text),
+        items: [],
+        sourceBlockIds: [block.id],
+      };
+      continue;
+    }
+    current.items.push(block.text);
+    current.sourceBlockIds?.push(block.id);
+  }
+  if (current.items.length || current.sourceBlockIds?.length) sections.push(current);
+  if (!sections.length) {
+    return [{ title: "简历全文", originalTitle: null, normalizedKind: null, items: blocks.map((block) => block.text), sourceBlockIds: blocks.map((block) => block.id) }];
+  }
+  return sections;
 }
 
-function headingInLine(text: string) {
-  const compact = text.replace(/[：:｜|·•\s]/g, "");
-  for (const rule of SECTION_RULES.map((item) => ({ ...item, aliases: [...item.aliases].sort((a, b) => b.length - a.length) }))) {
-    const alias = rule.aliases.find((candidate) => compact.startsWith(candidate) || (candidate.length >= 4 && compact.includes(candidate)));
-    if (!alias) continue;
-    const flexible = alias.split("").map((character) => `${character}\\s*`).join("");
-    const match = new RegExp(`${flexible}`).exec(text);
-    if (!match) continue;
-    const before = cleanText(text.slice(0, match.index));
-    const rest = cleanText(text.slice(match.index + match[0].length).replace(/^[：:\s|｜·•]+/, ""));
-    return { title: rule.title, before, rest };
-  }
-  return null;
-}
-
-function mergeShortFragments(lines: string[]) {
-  const merged: string[] = [];
-  for (const line of lines) {
-    const value = cleanText(line);
-    if (!value) continue;
-    const previous = merged.at(-1);
-    const looksLikeContinuation = previous && previous.length < 100 && value.length < 120 && /^[，。；、）)\-–—0-9A-Za-z]/.test(value);
-    if (looksLikeContinuation) merged[merged.length - 1] = cleanText(`${previous} ${value}`);
-    else merged.push(value);
-  }
-  return merged;
+export function adaptParsedDocumentToResume(document: ParsedDocument): ResumeStructuredContent {
+  const sections = discoverResumeSections(document);
+  const detectedSections = sections.filter((section) => section.originalTitle).length;
+  const warnings = [...document.quality.warnings];
+  if (!detectedSections) warnings.push("未发现明确的模块标题，已完整保留原文，可使用 AI 辅助分段或人工校正");
+  else if (detectedSections < 2) warnings.push("部分模块边界不够明确，请检查解析结果");
+  const level = detectedSections >= 2 && document.quality.level !== "low" ? document.quality.level : detectedSections ? "medium" : "low";
+  return {
+    parser_version: PDF_PARSER_VERSION,
+    sections,
+    quality: {
+      level,
+      detected_sections: detectedSections,
+      total_lines: document.pages.flatMap((page) => page.blocks).filter(isContentBlock).length,
+      warnings,
+      method: "native-layout-dynamic-sections",
+      ai_enhanced: false,
+    },
+    document,
+  };
 }
 
 export async function parseResumePdf(bytes: Uint8Array) {
-  const pdf = await getDocumentProxy(bytes);
-  const result = await extractTextItems(pdf);
-  const pageLines = result.items.map((items) => groupPageLines(items as PositionedItem[]));
-  const allLines = pageLines.flat();
-  const sections = new Map<string, string[]>();
-  let currentTitle = "简历摘要";
-  sections.set(currentTitle, []);
-
-  for (const line of allLines) {
-    const heading = headingInLine(line.text);
-    if (heading) {
-      if (heading.before) sections.get(currentTitle)?.push(heading.before);
-      currentTitle = heading.title;
-      if (!sections.has(currentTitle)) sections.set(currentTitle, []);
-      if (heading.rest) sections.get(currentTitle)?.push(heading.rest);
-      continue;
-    }
-    sections.get(currentTitle)?.push(line.text);
-  }
-
-  const structuredSections = Array.from(sections.entries())
-    .map(([title, items]) => ({ title, items: mergeShortFragments(items).slice(0, 40) }))
-    .filter((section) => section.items.length > 0);
-  const detectedSections = structuredSections.filter((section) => section.title !== "简历摘要").length;
-  const warnings: string[] = [];
-  if (detectedSections < 2) warnings.push("栏目标题识别较少，建议检查 PDF 是否为多栏或图片排版");
-  if (detectedSections < 3 && structuredSections.some((section) => section.items.length > 24)) warnings.push("部分栏目内容较长，可能存在栏目边界未识别");
-  if (allLines.length < 8) warnings.push("识别到的文本较少，请确认 PDF 不是扫描图片");
-
+  const document = await parsePdfDocument(bytes);
   return {
-    totalPages: result.totalPages,
-    text: pageLines.map((lines) => lines.map((line) => line.text).join("\n")).join("\n\n"),
-    structuredContent: {
-      parser_version: 2,
-      sections: structuredSections.length ? structuredSections : [{ title: "简历全文", items: allLines.map((line) => line.text).slice(0, 40) }],
-      quality: {
-        level: detectedSections >= 3 ? "high" : detectedSections >= 2 ? "medium" : "low",
-        detected_sections: detectedSections,
-        total_lines: allLines.length,
-        warnings,
-      } satisfies ResumeParseQuality,
-    },
+    totalPages: document.source.pageCount,
+    text: document.plainText,
+    document,
+    structuredContent: adaptParsedDocumentToResume(document),
   };
 }
