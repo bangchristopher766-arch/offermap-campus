@@ -1,0 +1,6 @@
+{"path":".trellis/spec/frontend/quality-guidelines.md","reason":"Existing verification and invariant style to cross-check"}
+{"path":"app/api/companies/route.ts","reason":"Direct account-scoped resource route comparison"}
+{"path":"lib/supabase.ts","reason":"Server client and credential boundary"}
+{"path":"lib/ai-client.ts","reason":"Provider configuration and secret handling"}
+{"path":"supabase/migrations/0001_offermap.sql","reason":"Base schema and row-level security evidence"}
+{"path":"package.json","reason":"Canonical lint/build/test commands"}
