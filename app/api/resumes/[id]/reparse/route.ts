@@ -2,6 +2,7 @@ import { parseResumePdf } from "@/lib/resume-parser";
 import { enhanceResumeStructure } from "@/lib/resume-ai-parser";
 import { createUserSupabase } from "@/lib/supabase";
 import { downloadPrivatePdf } from "@/lib/supabase-storage";
+import { PdfParseError } from "@/lib/pdf-document-parser";
 
 function tokenFrom(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -25,9 +26,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!accessToken) return Response.json({ error: "请先登录" }, { status: 401 });
     const bytes = await downloadPrivatePdf(resume.pdf_path, accessToken);
     const result = await parseResumePdf(bytes.slice());
-    if (result.text.trim().length < 80) return Response.json({ error: "没有识别到足够文字，暂不支持扫描版 PDF" }, { status: 422 });
-    const structuredContent = await enhanceResumeStructure(result.text, result.structuredContent);
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(result.text));
+    const structuredContent = await enhanceResumeStructure(result.document, result.structuredContent);
+    const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
     const contentHash = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const [{ data: latest }, { data: latestDocument }] = await Promise.all([
       supabase.from("resumes").select("version").order("version", { ascending: false }).limit(1).maybeSingle(),
@@ -54,6 +54,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     return Response.json({ data, createdNewVersion: true, stalePositions: false });
   } catch (error) {
+    if (error instanceof PdfParseError) return Response.json({ error: error.message, code: error.code }, { status: 422 });
     return Response.json({ error: error instanceof Error ? error.message : "重新解析失败" }, { status: 503 });
   }
 }

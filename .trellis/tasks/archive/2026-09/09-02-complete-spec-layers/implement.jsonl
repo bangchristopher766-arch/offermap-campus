@@ -1,0 +1,7 @@
+{"path":".trellis/spec/frontend/directory-structure.md","reason":"Existing architecture and naming baseline to align new layers"}
+{"path":"README.md","reason":"Documented runtime, API, services, tests, and deployment contracts"}
+{"path":"app/api/analyze/route.ts","reason":"Representative auth, validation, and domain-service boundary"}
+{"path":"lib/analysis-engine.ts","reason":"AI orchestration and evidence-domain behavior"}
+{"path":"supabase/migrations/0004_role_profiles_and_resume_library.sql","reason":"Schema, versioning, and account-isolation evidence"}
+{"path":"worker/index.ts","reason":"Cloudflare Worker runtime and deployment boundary"}
+{"path":"tests/rendered-html.test.mjs","reason":"Representative test harness and quality conventions"}
